@@ -18,6 +18,7 @@ export default function SellerRegisterPage() {
   });
 
   const [status, setStatus] = useState('');
+  const [statusType, setStatusType] = useState(''); // "success", "error", "info"
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
@@ -35,6 +36,7 @@ export default function SellerRegisterPage() {
 
       setLoading(true);
       setStatus('');
+      setStatusType('');
 
       await window.ethereum.request({ method: 'eth_requestAccounts' });
 
@@ -47,6 +49,7 @@ export default function SellerRegisterPage() {
       const alreadyRegistered = await contract.isRegistered(userAddress);
       if (alreadyRegistered) {
         setStatus('You are already registered as a seller.');
+        setStatusType('info');
         setLoading(false);
         return;
       }
@@ -63,16 +66,33 @@ export default function SellerRegisterPage() {
       setStatus('Transaction sent. Waiting for confirmation...');
       await tx.wait();
       setStatus('Registration complete.');
+      setStatusType('success');
     } catch (err) {
       console.error(err);
-      if (err?.reason === 'Seller already registered') {
+      if (err.code === 4001) {
+        setStatus('Transaction was rejected by the user.');
+        setStatusType('error');
+      } else if (err?.reason === 'Seller already registered') {
         setStatus('You are already registered as a seller.');
+        setStatusType('info');
       } else {
         setStatus('Registration failed. Try again.');
+        setStatusType('error');
       }
     } finally {
       setLoading(false);
     }
+  };
+
+  const renderStatusIcon = () => {
+    if (statusType === 'success') {
+      return <span className="text-green-600 text-2xl">✅</span>;
+    } else if (statusType === 'error') {
+      return <span className="text-red-600 text-2xl">❌</span>;
+    } else if (statusType === 'info') {
+      return <span className="text-yellow-600 text-2xl">⚠️</span>;
+    }
+    return null;
   };
 
   return (
@@ -142,7 +162,20 @@ export default function SellerRegisterPage() {
           </form>
 
           {status && (
-            <p className="mt-6 text-center text-sm text-gray-600">{status}</p>
+            <div className="mt-6 flex items-center justify-center space-x-3">
+              {renderStatusIcon()}
+              <p
+                className={`text-sm ${
+                  statusType === 'success'
+                    ? 'text-green-600'
+                    : statusType === 'error'
+                    ? 'text-red-600'
+                    : 'text-yellow-600'
+                }`}
+              >
+                {status}
+              </p>
+            </div>
           )}
         </div>
       </div>
