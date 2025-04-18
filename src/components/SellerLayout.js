@@ -12,7 +12,7 @@ export default function SellerLayout({ children }) {
         </div>
         <nav className="space-x-6">
           <Link href="/seller/register" className="text-gray-700 hover:text-blue-600 font-medium">Register</Link>
-          <Link href="/seller/add-product" className="text-gray-700 hover:text-blue-600 font-medium">Add Product</Link>
+          <Link href="/seller/addProduct" className="text-gray-700 hover:text-blue-600 font-medium">Add Product</Link>
           <Link href="/seller/inventory" className="text-gray-700 hover:text-blue-600 font-medium">Inventory</Link>
           <Link href="/seller/orders" className="text-gray-700 hover:text-blue-600 font-medium">Orders</Link>
         </nav>
