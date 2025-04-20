@@ -1,76 +1,103 @@
 'use client';
 
 import { useState } from 'react';
+import { BrowserProvider, Contract } from 'ethers';
 import SellerLayout from '@/components/SellerLayout';
+import contractABI from '@/contracts/SellerRegistryABI.json';
 
-export default function AddProductPage() {
+const SELLER_CONTRACT_ADDRESS = '0x82b7ac6fbfF4F093541dBb2C1824f36100227E1A';
+
+export default function SellerRegisterPage() {
   const [form, setForm] = useState({
-    name: '',
-    category: '',
-    price: '',
-    units: '',
-    image: null,
+    businessName: '',
+    ownerName: '',
+    phone: '',
+    email: '',
+    city: '',
+    locationAddress: '',
   });
 
-  const [imagePreview, setImagePreview] = useState(null);
+  const [status, setStatus] = useState('');
+  const [statusType, setStatusType] = useState(''); // "success", "error", "info"
   const [loading, setLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState('');
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm({ ...form, [name]: value });
+    setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setForm({ ...form, image: file });
-      setImagePreview(URL.createObjectURL(file));
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!form.image) return;
-
-    setLoading(true);
-    setLoadingMessage('Uploading image...');
-
+  const registerSeller = async () => {
     try {
-      const imageData = new FormData();
-      imageData.append('file', form.image);
+      if (!window.ethereum) {
+        alert('Please install MetaMask');
+        return;
+      }
 
-      const res = await fetch('/api/uploadToIPFS', {
-        method: 'POST',
-        body: imageData,
-      });
+      alert('Please confirm the registration transaction in MetaMask');
 
-      if (!res.ok) throw new Error('Failed to upload image');
+      setLoading(true);
+      setStatus('');
+      setStatusType('');
 
-      const data = await res.json();
-      const imageCID = data.cid;
+      await window.ethereum.request({ method: 'eth_requestAccounts' });
 
-      setLoadingMessage('Adding product...');
+      const provider = new BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const userAddress = await signer.getAddress();
 
-      // Simulate contract interaction
-      console.log('Image CID:', imageCID);
-      console.log('Product Data:', form);
+      const contract = new Contract(SELLER_CONTRACT_ADDRESS, contractABI, signer);
 
-      setTimeout(() => {
+      const alreadyRegistered = await contract.isRegistered(userAddress);
+      if (alreadyRegistered) {
+        setStatus('You are already registered as a seller.');
+        setStatusType('info');
         setLoading(false);
-        alert('Product added successfully!');
-      }, 2000);
-    } catch (error) {
-      console.error('Error:', error);
+        return;
+      }
+
+      const tx = await contract.registerSeller(
+        form.businessName,
+        form.ownerName,
+        form.phone,
+        form.email,
+        form.city,
+        form.locationAddress
+      );
+
+      setStatus('Transaction sent. Waiting for confirmation...');
+      await tx.wait();
+      setStatus('Registration complete.');
+      setStatusType('success');
+    } catch (err) {
+      console.error(err);
+      if (err.code === 4001) {
+        setStatus('Transaction was rejected by the user.');
+        setStatusType('error');
+      } else if (err?.reason === 'Seller already registered') {
+        setStatus('You are already registered as a seller.');
+        setStatusType('info');
+      } else {
+        setStatus('Registration failed. Try again.');
+        setStatusType('error');
+      }
+    } finally {
       setLoading(false);
-      alert('Error uploading image or adding product');
     }
+  };
+
+  const renderStatusIcon = () => {
+    if (statusType === 'success') {
+      return <span className="text-green-600 text-2xl">✅</span>;
+    } else if (statusType === 'error') {
+      return <span className="text-red-600 text-2xl">❌</span>;
+    } else if (statusType === 'info') {
+      return <span className="text-yellow-600 text-2xl">⚠️</span>;
+    }
+    return null;
   };
 
   return (
     <SellerLayout>
-      <div className="relative min-h-screen flex items-center justify-center bg-gray-50 px-4 py-10">
-        {/* Register-style translucent white loading overlay */}
+      <div className="relative min-h-screen flex items-center justify-center bg-gray-50 px-4">
         {loading && (
           <div className="absolute inset-0 z-50 bg-white bg-opacity-80 flex flex-col items-center justify-center">
             <svg
@@ -86,109 +113,70 @@ export default function AddProductPage() {
                 r="10"
                 stroke="currentColor"
                 strokeWidth="4"
-              />
+              ></circle>
               <path
                 className="opacity-75"
                 fill="currentColor"
                 d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-              />
+              ></path>
             </svg>
-            <p className="text-lg font-medium text-gray-700">{loadingMessage}</p>
+            <p className="text-lg font-medium text-gray-700">Waiting for transaction confirmation...</p>
           </div>
         )}
 
         <div
-          className={`bg-white shadow-xl rounded-2xl p-8 w-full max-w-xl border transition-opacity duration-300 ${
+          className={`bg-white shadow-xl rounded-2xl p-8 w-full max-w-xl border ${
             loading ? 'opacity-30 pointer-events-none' : ''
           }`}
         >
-          <h1 className="text-3xl font-semibold mb-6 text-center text-gray-800">Add New Product</h1>
-
-          <form className="space-y-5" onSubmit={handleSubmit}>
-            <div>
-              <label className="block text-gray-700 font-medium mb-1">Product Name</label>
-              <input
-                type="text"
-                name="name"
-                value={form.name}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-gray-700 font-medium mb-1">Category</label>
-              <select
-                name="category"
-                value={form.category}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="" disabled>Select a Category</option>
-                <option value="Fashion">Fashion</option>
-                <option value="Electronics">Electronics</option>
-                <option value="Furniture">Furniture</option>
-                <option value="Books">Books</option>
-                <option value="Beauty">Beauty</option>
-                <option value="Sports">Sports</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-gray-700 font-medium mb-1">Price (in tinybars)</label>
-              <input
-                type="number"
-                name="price"
-                value={form.price}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-gray-700 font-medium mb-1">Available Units</label>
-              <input
-                type="number"
-                name="units"
-                value={form.units}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-gray-700 font-medium mb-1">Product Image</label>
-              <label className="cursor-pointer flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg hover:bg-gray-100 transition">
+          <h1 className="text-3xl font-semibold mb-6 text-center text-gray-800">Seller Registration</h1>
+          <form
+            className="space-y-5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              registerSeller();
+            }}
+          >
+            {['businessName', 'ownerName', 'phone', 'email', 'city', 'locationAddress'].map((field) => (
+              <div key={field}>
+                <label className="block text-gray-700 font-medium mb-1 capitalize">
+                  {field.replace(/([A-Z])/g, ' $1')}
+                </label>
                 <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageChange}
-                  className="hidden"
+                  type="text"
+                  name={field}
+                  value={form[field]}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                {imagePreview ? (
-                  <img src={imagePreview} alt="Preview" className="h-full object-contain" />
-                ) : (
-                  <span className="text-gray-500">Click to upload image</span>
-                )}
-              </label>
-            </div>
+              </div>
+            ))}
 
             <button
               type="submit"
-              disabled={!form.image}
-              className={`w-full py-3 rounded-lg text-lg font-medium transition-all duration-300 ${
-                form.image
-                  ? 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg'
-                  : 'bg-blue-300 text-white opacity-50 cursor-not-allowed'
-              }`}
+              className="w-full bg-blue-600 text-white py-3 rounded-lg text-lg font-medium transition-all duration-300 hover:bg-blue-700 hover:shadow-lg"
             >
-              Add Product
+              Register
             </button>
           </form>
+
+          {status && (
+            <div className="mt-6 flex items-center justify-center space-x-3">
+              {renderStatusIcon()}
+              <p
+                className={`text-sm ${
+                  statusType === 'success'
+                    ? 'text-green-600'
+                    : statusType === 'error'
+                    ? 'text-red-600'
+                    : 'text-yellow-600'
+                }`}
+              >
+                {status}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </SellerLayout>

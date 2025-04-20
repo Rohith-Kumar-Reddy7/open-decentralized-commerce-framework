@@ -29,6 +29,63 @@
             },
             {
                 "indexed": false,
+                "internalType": "enum InventoryRegistry.Category",
+                "name": "newCategory",
+                "type": "uint8"
+            }
+        ],
+        "name": "ProductCategoryUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "productId",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "string",
+                "name": "newCID",
+                "type": "string"
+            }
+        ],
+        "name": "ProductImageCIDUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "productId",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "string",
+                "name": "newName",
+                "type": "string"
+            }
+        ],
+        "name": "ProductNameUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "productId",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
                 "internalType": "uint256",
                 "name": "newPrice",
                 "type": "uint256"
@@ -92,12 +149,200 @@
     {
         "inputs": [
             {
+                "internalType": "uint256",
+                "name": "productId",
+                "type": "uint256"
+            }
+        ],
+        "name": "getProduct",
+        "outputs": [
+            {
+                "components": [
+                    {
+                        "internalType": "uint256",
+                        "name": "id",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "name",
+                        "type": "string"
+                    },
+                    {
+                        "internalType": "enum InventoryRegistry.Category",
+                        "name": "category",
+                        "type": "uint8"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "price",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "availableUnits",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "imageCID",
+                        "type": "string"
+                    },
+                    {
+                        "internalType": "address",
+                        "name": "owner",
+                        "type": "address"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "releaseDate",
+                        "type": "uint256"
+                    }
+                ],
+                "internalType": "struct InventoryRegistry.Product",
+                "name": "",
+                "type": "tuple"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "enum InventoryRegistry.Category",
+                "name": "category",
+                "type": "uint8"
+            }
+        ],
+        "name": "getProductsByCategory",
+        "outputs": [
+            {
+                "components": [
+                    {
+                        "internalType": "uint256",
+                        "name": "id",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "name",
+                        "type": "string"
+                    },
+                    {
+                        "internalType": "enum InventoryRegistry.Category",
+                        "name": "category",
+                        "type": "uint8"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "price",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "availableUnits",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "imageCID",
+                        "type": "string"
+                    },
+                    {
+                        "internalType": "address",
+                        "name": "owner",
+                        "type": "address"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "releaseDate",
+                        "type": "uint256"
+                    }
+                ],
+                "internalType": "struct InventoryRegistry.Product[]",
+                "name": "",
+                "type": "tuple[]"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "address",
                 "name": "seller",
                 "type": "address"
             }
         ],
         "name": "getProductsBySeller",
+        "outputs": [
+            {
+                "components": [
+                    {
+                        "internalType": "uint256",
+                        "name": "id",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "name",
+                        "type": "string"
+                    },
+                    {
+                        "internalType": "enum InventoryRegistry.Category",
+                        "name": "category",
+                        "type": "uint8"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "price",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "availableUnits",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "imageCID",
+                        "type": "string"
+                    },
+                    {
+                        "internalType": "address",
+                        "name": "owner",
+                        "type": "address"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "releaseDate",
+                        "type": "uint256"
+                    }
+                ],
+                "internalType": "struct InventoryRegistry.Product[]",
+                "name": "",
+                "type": "tuple[]"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "seller",
+                "type": "address"
+            },
+            {
+                "internalType": "enum InventoryRegistry.Category",
+                "name": "category",
+                "type": "uint8"
+            }
+        ],
+        "name": "getProductsBySellerOfCategory",
         "outputs": [
             {
                 "components": [
@@ -191,54 +436,54 @@
         "inputs": [
             {
                 "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
-            }
-        ],
-        "name": "products",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "id",
+                "name": "productId",
                 "type": "uint256"
             },
             {
                 "internalType": "string",
-                "name": "name",
+                "name": "newCategory",
                 "type": "string"
-            },
-            {
-                "internalType": "enum InventoryRegistry.Category",
-                "name": "category",
-                "type": "uint8"
-            },
-            {
-                "internalType": "uint256",
-                "name": "price",
-                "type": "uint256"
-            },
+            }
+        ],
+        "name": "updateProductCategory",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
             {
                 "internalType": "uint256",
-                "name": "availableUnits",
+                "name": "productId",
                 "type": "uint256"
             },
             {
                 "internalType": "string",
-                "name": "imageCID",
+                "name": "newCID",
                 "type": "string"
-            },
-            {
-                "internalType": "address",
-                "name": "owner",
-                "type": "address"
-            },
-            {
-                "internalType": "uint256",
-                "name": "releaseDate",
-                "type": "uint256"
             }
         ],
-        "stateMutability": "view",
+        "name": "updateProductImageCID",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "productId",
+                "type": "uint256"
+            },
+            {
+                "internalType": "string",
+                "name": "newName",
+                "type": "string"
+            }
+        ],
+        "name": "updateProductName",
+        "outputs": [],
+        "stateMutability": "nonpayable",
         "type": "function"
     },
     {

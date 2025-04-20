@@ -1,7 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { BrowserProvider, Contract, ethers } from 'ethers';
 import SellerLayout from '@/components/SellerLayout';
+
+// IMPORT your contract ABIs and addresses
+import SellerRegistryABI from '@/contracts/SellerRegistryABI.json';
+import InventoryRegistryABI from '@/contracts/InventoryRegistryABI.json';
+
+const SELLER_REGISTRY_ADDRESS = '0x82b7ac6fbfF4F093541dBb2C1824f36100227E1A';
+const INVENTORY_REGISTRY_ADDRESS = '0xe7c9e62b331841D0f05382cF98090bF5a818642D';
 
 export default function AddProductPage() {
   const [form, setForm] = useState({
@@ -15,6 +23,19 @@ export default function AddProductPage() {
   const [imagePreview, setImagePreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [wallet, setWallet] = useState(null);
+
+  useEffect(() => {
+    async function getWallet() {
+      if (window.ethereum) {
+        const [account] = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        setWallet(account);
+      }
+    }
+    getWallet();
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -31,12 +52,37 @@ export default function AddProductPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.image) return;
-
-    setLoading(true);
-    setLoadingMessage('Uploading image...');
+    setSuccessMessage('');
+    setErrorMessage('');
+    if (!form.image || !wallet) return;
 
     try {
+      setLoading(true);
+      setLoadingMessage('Verifying seller...');
+
+      // Connect to Ethereum provider
+      await window.ethereum.request({ method: 'eth_requestAccounts' });
+
+      const provider = new BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const userAddress = await signer.getAddress();
+
+      const sellerRegistry = new Contract(
+        SELLER_REGISTRY_ADDRESS,
+        SellerRegistryABI,
+        signer
+      );
+
+      const isRegistered = await sellerRegistry.isRegistered(userAddress);
+
+      if (!isRegistered) {
+        setLoading(false);
+        setErrorMessage('❌ You must be a registered seller to add a product.');
+        return;
+      }
+
+      // Upload image to IPFS
+      setLoadingMessage('Uploading image to IPFS...');
       const imageData = new FormData();
       imageData.append('file', form.image);
 
@@ -45,57 +91,88 @@ export default function AddProductPage() {
         body: imageData,
       });
 
-      if (!res.ok) throw new Error('Failed to upload image');
+      if (!res.ok) throw new Error('Image upload failed');
+      const { cid: imageCID } = await res.json();
 
-      const data = await res.json();
-      const imageCID = data.cid;
+      // Add product to InventoryRegistry
+      setLoadingMessage('Adding product to your inventory ()...');
 
-      setLoadingMessage('Adding product...');
+      const inventoryRegistry = new Contract(
+        INVENTORY_REGISTRY_ADDRESS,
+        InventoryRegistryABI,
+        signer
+      );
 
-      // Simulate contract interaction
-      console.log('Image CID:', imageCID);
-      console.log('Product Data:', form);
+      // Convert category string to enum index (must match smart contract order)
+      const categories = ['Fashion', 'Electronics', 'Furniture', 'Books', 'Beauty', 'Sports'];
+      const categoryIndex = categories.indexOf(form.category);
+      if (categoryIndex === -1) throw new Error('Invalid category');
 
-      // Simulate delay
-      setTimeout(() => {
-        setLoading(false);
-        alert('Product added successfully!');
-      }, 2000);
+      const tx = await inventoryRegistry.addProduct(
+        form.name,
+        categoryIndex,
+        ethers.parseUnits(form.price, 0),
+        ethers.parseUnits(form.units, 0),
+        imageCID
+      );
+
+      await tx.wait();
+
+      setLoading(false);
+      setSuccessMessage('✅ Product added successfully!');
+      setForm({
+        name: '',
+        category: '',
+        price: '',
+        units: '',
+        image: null,
+      });
+      setImagePreview(null);
     } catch (error) {
       console.error('Error:', error);
       setLoading(false);
-      alert('Error uploading image or adding product');
+      setErrorMessage('❌ Error uploading image or adding product.');
     }
   };
+
+  useEffect(() => {
+    if (successMessage || errorMessage) {
+      const timer = setTimeout(() => {
+        setSuccessMessage('');
+        setErrorMessage('');
+      }, 5000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage, errorMessage]);
 
   return (
     <SellerLayout>
       <div className="relative min-h-screen flex items-center justify-center bg-gray-50 px-4 py-10">
-        {/* Register-style translucent overlay */}
         {loading && (
           <div className="absolute inset-0 z-50 bg-white bg-opacity-80 flex flex-col items-center justify-center">
-          <svg
-            className="animate-spin h-10 w-10 text-blue-600 mb-4"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-            />
-          </svg>
-          <p className="text-lg font-medium text-gray-700">{loadingMessage}</p>
-        </div>
+            <svg
+              className="animate-spin h-10 w-10 text-blue-600 mb-4"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+              />
+            </svg>
+            <p className="text-lg font-medium text-gray-700">{loadingMessage}</p>
+          </div>
         )}
 
         <div className="bg-white shadow-xl rounded-2xl p-8 w-full max-w-xl border">
@@ -110,7 +187,7 @@ export default function AddProductPage() {
                 value={form.name}
                 onChange={handleChange}
                 required
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
               />
             </div>
 
@@ -121,7 +198,7 @@ export default function AddProductPage() {
                 value={form.category}
                 onChange={handleChange}
                 required
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
               >
                 <option value="" disabled>Select a Category</option>
                 <option value="Fashion">Fashion</option>
@@ -134,14 +211,14 @@ export default function AddProductPage() {
             </div>
 
             <div>
-              <label className="block text-gray-700 font-medium mb-1">Price (in tinybars)</label>
+              <label className="block text-gray-700 font-medium mb-1">Price (tinybars)</label>
               <input
                 type="number"
                 name="price"
                 value={form.price}
                 onChange={handleChange}
                 required
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
               />
             </div>
 
@@ -153,7 +230,7 @@ export default function AddProductPage() {
                 value={form.units}
                 onChange={handleChange}
                 required
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
               />
             </div>
 
@@ -187,6 +264,32 @@ export default function AddProductPage() {
             </button>
           </form>
         </div>
+
+        {/* Success/Error Popup */}
+        {(successMessage || errorMessage) && (
+          <div className="fixed top-6 right-6 z-50">
+            <div
+              className={`flex items-start gap-3 p-4 rounded-lg shadow-lg text-white transition-all duration-300 ${
+                successMessage ? 'bg-green-600' : 'bg-red-600'
+              }`}
+            >
+              <div className="flex-1">
+                <p className="font-medium">
+                  {successMessage || errorMessage}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setSuccessMessage('');
+                  setErrorMessage('');
+                }}
+                className="text-white hover:text-gray-200 text-xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </SellerLayout>
   );

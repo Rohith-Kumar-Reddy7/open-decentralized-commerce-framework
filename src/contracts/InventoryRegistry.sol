@@ -30,6 +30,9 @@ contract InventoryRegistry {
     event ProductAdded(uint256 productId, address seller);
     event ProductPriceUpdated(uint256 productId, uint256 newPrice);
     event ProductStockIncreased(uint256 productId, uint256 addedUnits);
+    event ProductNameUpdated(uint256 productId, string newName);
+    event ProductCategoryUpdated(uint256 productId, Category newCategory);
+    event ProductImageCIDUpdated(uint256 productId, string newCID);
 
     modifier onlyOwner(uint256 productId) {
         require(products[productId].owner == msg.sender, "Not the product owner");
@@ -81,6 +84,37 @@ contract InventoryRegistry {
     function increaseProductStock(uint256 productId, uint256 addedUnits) public onlyOwner(productId) {
         products[productId].availableUnits += addedUnits;
         emit ProductStockIncreased(productId, addedUnits);
+    }
+
+    function updateProductName(uint256 productId, string memory newName) public onlyOwner(productId) {
+        require(bytes(newName).length > 0, "Name cannot be empty");
+        products[productId].name = newName;
+        emit ProductNameUpdated(productId, newName);
+    }
+
+    function updateProductImageCID(uint256 productId, string memory newCID) public onlyOwner(productId) {
+        require(bytes(newCID).length > 0, "Image CID cannot be empty");
+        products[productId].imageCID = newCID;
+        emit ProductImageCIDUpdated(productId, newCID);
+    }
+
+    function updateProductCategory(uint256 productId, string memory newCategory) public onlyOwner(productId) {
+        Category categoryEnum = parseCategory(newCategory);
+        products[productId].category = categoryEnum;
+        emit ProductCategoryUpdated(productId, categoryEnum);
+    }
+
+    function parseCategory(string memory category) internal pure returns (Category) {
+        bytes32 hashed = keccak256(abi.encodePacked(category));
+
+        if (hashed == keccak256(abi.encodePacked("Fashion"))) return Category.Fashion;
+        if (hashed == keccak256(abi.encodePacked("Electronics"))) return Category.Electronics;
+        if (hashed == keccak256(abi.encodePacked("Furniture"))) return Category.Furniture;
+        if (hashed == keccak256(abi.encodePacked("Books"))) return Category.Books;
+        if (hashed == keccak256(abi.encodePacked("Beauty"))) return Category.Beauty;
+        if (hashed == keccak256(abi.encodePacked("Sports"))) return Category.Sports;
+
+        revert("Invalid category");
     }
 
     function isProductIdTaken(uint256 productId) public view returns (bool) {
