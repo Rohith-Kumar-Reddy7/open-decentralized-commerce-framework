@@ -4,9 +4,9 @@
         "inputs": [
             {
                 "indexed": false,
-                "internalType": "string",
+                "internalType": "uint256",
                 "name": "productId",
-                "type": "string"
+                "type": "uint256"
             },
             {
                 "indexed": false,
@@ -23,9 +23,9 @@
         "inputs": [
             {
                 "indexed": false,
-                "internalType": "string",
+                "internalType": "uint256",
                 "name": "productId",
-                "type": "string"
+                "type": "uint256"
             },
             {
                 "indexed": false,
@@ -42,9 +42,9 @@
         "inputs": [
             {
                 "indexed": false,
-                "internalType": "string",
+                "internalType": "uint256",
                 "name": "productId",
-                "type": "string"
+                "type": "uint256"
             },
             {
                 "indexed": false,
@@ -58,11 +58,6 @@
     },
     {
         "inputs": [
-            {
-                "internalType": "string",
-                "name": "productId",
-                "type": "string"
-            },
             {
                 "internalType": "string",
                 "name": "name",
@@ -106,6 +101,11 @@
         "outputs": [
             {
                 "components": [
+                    {
+                        "internalType": "uint256",
+                        "name": "id",
+                        "type": "uint256"
+                    },
                     {
                         "internalType": "string",
                         "name": "name",
@@ -153,9 +153,9 @@
     {
         "inputs": [
             {
-                "internalType": "string",
+                "internalType": "uint256",
                 "name": "productId",
-                "type": "string"
+                "type": "uint256"
             },
             {
                 "internalType": "uint256",
@@ -171,9 +171,9 @@
     {
         "inputs": [
             {
-                "internalType": "string",
+                "internalType": "uint256",
                 "name": "productId",
-                "type": "string"
+                "type": "uint256"
             }
         ],
         "name": "isProductIdTaken",
@@ -190,13 +190,18 @@
     {
         "inputs": [
             {
-                "internalType": "string",
+                "internalType": "uint256",
                 "name": "",
-                "type": "string"
+                "type": "uint256"
             }
         ],
         "name": "products",
         "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "id",
+                "type": "uint256"
+            },
             {
                 "internalType": "string",
                 "name": "name",
@@ -239,9 +244,9 @@
     {
         "inputs": [
             {
-                "internalType": "string",
+                "internalType": "uint256",
                 "name": "productId",
-                "type": "string"
+                "type": "uint256"
             },
             {
                 "internalType": "uint256",
