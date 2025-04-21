@@ -3,13 +3,14 @@
 import { useState, useEffect } from 'react';
 import { BrowserProvider, Contract, ethers } from 'ethers';
 import SellerLayout from '@/components/SellerLayout';
+import { CONTRACT_ADDRESSES } from '@/constants/contracts';
 
 // IMPORT your contract ABIs and addresses
 import SellerRegistryABI from '@/contracts/SellerRegistryABI.json';
 import InventoryRegistryABI from '@/contracts/InventoryRegistryABI.json';
 
-const SELLER_REGISTRY_ADDRESS = '0x82b7ac6fbfF4F093541dBb2C1824f36100227E1A';
-const INVENTORY_REGISTRY_ADDRESS = '0xe7c9e62b331841D0f05382cF98090bF5a818642D';
+const SELLER_REGISTRY_ADDRESS = CONTRACT_ADDRESSES.SellerRegistry;
+const INVENTORY_REGISTRY_ADDRESS = CONTRACT_ADDRESSES.InventoryRegistry;
 
 export default function AddProductPage() {
   const [form, setForm] = useState({
@@ -95,7 +96,7 @@ export default function AddProductPage() {
       const { cid: imageCID } = await res.json();
 
       // Add product to InventoryRegistry
-      setLoadingMessage('Adding product to your inventory ()...');
+      setLoadingMessage('Adding product to your inventory (confirm the metamask transaction)...');
 
       const inventoryRegistry = new Contract(
         INVENTORY_REGISTRY_ADDRESS,
@@ -150,29 +151,12 @@ export default function AddProductPage() {
     <SellerLayout>
       <div className="relative min-h-screen flex items-center justify-center bg-gray-50 px-4 py-10">
         {loading && (
-          <div className="absolute inset-0 z-50 bg-white bg-opacity-80 flex flex-col items-center justify-center">
-            <svg
-              className="animate-spin h-10 w-10 text-blue-600 mb-4"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-              />
-            </svg>
-            <p className="text-lg font-medium text-gray-700">{loadingMessage}</p>
+          <div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center backdrop-blur-sm">
+          <div className="text-center animate-pulse">
+            <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-lg font-medium text-blue-700">{loadingMessage}</p>
           </div>
+        </div>
         )}
 
         <div className="bg-white shadow-xl rounded-2xl p-8 w-full max-w-xl border">

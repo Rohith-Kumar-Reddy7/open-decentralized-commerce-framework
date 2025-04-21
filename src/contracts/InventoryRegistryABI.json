@@ -105,12 +105,31 @@
             },
             {
                 "indexed": false,
+                "internalType": "bool",
+                "name": "newStatus",
+                "type": "bool"
+            }
+        ],
+        "name": "ProductStatusChanged",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
                 "internalType": "uint256",
-                "name": "addedUnits",
+                "name": "productId",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "newStock",
                 "type": "uint256"
             }
         ],
-        "name": "ProductStockIncreased",
+        "name": "ProductStockChanged",
         "type": "event"
     },
     {
@@ -142,6 +161,42 @@
             }
         ],
         "name": "addProduct",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "productId",
+                "type": "uint256"
+            },
+            {
+                "internalType": "bool",
+                "name": "newStatus",
+                "type": "bool"
+            }
+        ],
+        "name": "changeProductStatus",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "productId",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "newStock",
+                "type": "uint256"
+            }
+        ],
+        "name": "changeProductStock",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
@@ -197,6 +252,11 @@
                         "internalType": "uint256",
                         "name": "releaseDate",
                         "type": "uint256"
+                    },
+                    {
+                        "internalType": "bool",
+                        "name": "status",
+                        "type": "bool"
                     }
                 ],
                 "internalType": "struct InventoryRegistry.Product",
@@ -258,6 +318,11 @@
                         "internalType": "uint256",
                         "name": "releaseDate",
                         "type": "uint256"
+                    },
+                    {
+                        "internalType": "bool",
+                        "name": "status",
+                        "type": "bool"
                     }
                 ],
                 "internalType": "struct InventoryRegistry.Product[]",
@@ -319,6 +384,11 @@
                         "internalType": "uint256",
                         "name": "releaseDate",
                         "type": "uint256"
+                    },
+                    {
+                        "internalType": "bool",
+                        "name": "status",
+                        "type": "bool"
                     }
                 ],
                 "internalType": "struct InventoryRegistry.Product[]",
@@ -385,6 +455,11 @@
                         "internalType": "uint256",
                         "name": "releaseDate",
                         "type": "uint256"
+                    },
+                    {
+                        "internalType": "bool",
+                        "name": "status",
+                        "type": "bool"
                     }
                 ],
                 "internalType": "struct InventoryRegistry.Product[]",
@@ -393,24 +468,6 @@
             }
         ],
         "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "productId",
-                "type": "uint256"
-            },
-            {
-                "internalType": "uint256",
-                "name": "addedUnits",
-                "type": "uint256"
-            }
-        ],
-        "name": "increaseProductStock",
-        "outputs": [],
-        "stateMutability": "nonpayable",
         "type": "function"
     },
     {

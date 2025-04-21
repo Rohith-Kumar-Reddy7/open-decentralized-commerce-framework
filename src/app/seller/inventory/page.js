@@ -1,0 +1,246 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { BrowserProvider, Contract } from "ethers";
+import SellerLayout from "@/components/SellerLayout";
+import SellerRegistryABI from "@/contracts/SellerRegistryABI.json";
+import InventoryRegistryABI from "@/contracts/InventoryRegistryABI.json";
+import { CONTRACT_ADDRESSES } from "@/constants/contracts";
+
+const SELLER_REGISTRY_ADDRESS = CONTRACT_ADDRESSES.SellerRegistry;
+const INVENTORY_REGISTRY_ADDRESS = CONTRACT_ADDRESSES.InventoryRegistry;
+
+const categoryEnum = [
+  "Fashion",
+  "Electronics",
+  "Furniture",
+  "Books",
+  "Beauty",
+  "Sports",
+];
+
+export default function InventoryPage() {
+  const [wallet, setWallet] = useState(null);
+  const [isRegistered, setIsRegistered] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [originalProducts, setOriginalProducts] = useState([]);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [imagesLoaded, setImagesLoaded] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function init() {
+      try {
+        if (window.ethereum) {
+          const [account] = await window.ethereum.request({ method: "eth_requestAccounts" });
+          setWallet(account);
+
+          const provider = new BrowserProvider(window.ethereum);
+          const signer = await provider.getSigner();
+
+          const sellerRegistry = new Contract(
+            SELLER_REGISTRY_ADDRESS,
+            SellerRegistryABI,
+            signer
+          );
+
+          const registered = await sellerRegistry.isRegistered(account);
+          setIsRegistered(registered);
+
+          if (!registered) {
+            setErrorMessage("You must be a registered seller to view your inventory.");
+            setLoading(false);
+            return;
+          }
+
+          const inventoryRegistry = new Contract(
+            INVENTORY_REGISTRY_ADDRESS,
+            InventoryRegistryABI,
+            signer
+          );
+
+          const sellerProducts = await inventoryRegistry.getProductsBySeller(account);
+
+          const formatted = sellerProducts.map((product) => ({
+            id: product.id.toString(),
+            name: product.name,
+            category: categoryEnum[Number(product.category)],
+            price: product.price.toString(),
+            stock: product.availableUnits.toString(),
+            imageCID: product.imageCID,
+            releaseDate: new Date(Number(product.releaseDate) * 1000).toLocaleDateString(),
+            updated: false,
+          }));
+
+          setProducts(formatted);
+          setOriginalProducts(formatted);
+
+          if (formatted.length === 0) setLoading(false);
+        }
+      } catch (error) {
+        console.error("Error:", error);
+        setErrorMessage("Failed to load inventory.");
+        setLoading(false);
+      }
+    }
+
+    init();
+  }, []);
+
+  useEffect(() => {
+    if (products.length > 0 && imagesLoaded === products.length) setLoading(false);
+  }, [imagesLoaded, products]);
+
+  const handleImageLoad = () => setImagesLoaded((prev) => prev + 1);
+
+  const handleFieldChange = (index, field, value) => {
+    const updated = [...products];
+    updated[index][field] = value;
+    updated[index].updated = true;
+    setProducts(updated);
+  };
+
+  const handleImageChange = (index, file) => {
+    const fakeCID = "newCID_simulated";
+    handleFieldChange(index, "imageCID", fakeCID);
+  };
+
+  const handleUpdate = async (product, index) => {
+    const provider = new BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+    const contract = new Contract(INVENTORY_REGISTRY_ADDRESS, InventoryRegistryABI, signer);
+
+    const updates = [];
+    const original = originalProducts[index];
+
+    try {
+      if (product.price !== original.price) {
+        updates.push(contract.updateProductPrice(product.id, product.price));
+      }
+      if (product.stock !== original.stock) {
+        if (parseInt(product.stock) < parseInt(original.stock)) {
+          alert("Stock can only be increased.");
+          return;
+        }
+        const addedStock = parseInt(product.stock) - parseInt(original.stock);
+        updates.push(contract.increaseProductStock(product.id, addedStock));
+      }
+      if (product.imageCID !== original.imageCID) {
+        updates.push(contract.updateProductImageCID(product.id, product.imageCID));
+      }
+      if (product.name !== original.name) {
+        updates.push(contract.updateProductName(product.id, product.name));
+      }
+
+      await Promise.all(updates);
+      alert("Product updated successfully!");
+      const updated = [...products];
+      updated[index].updated = false;
+      setProducts(updated);
+    } catch (err) {
+      console.error(err);
+      alert("Update failed.");
+    }
+  };
+
+  return (
+    <SellerLayout>
+      <div className="p-4 min-h-screen bg-gray-50">
+        <h1 className="text-2xl font-semibold text-center text-gray-700 mb-6">My Inventory</h1>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {products.map((product, index) => (
+            <div
+              key={product.id}
+              className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 hover:shadow-md transition-all"
+            >
+              <div className="relative rounded-lg overflow-hidden aspect-[4/3]">
+                <img
+                  src={`https://sapphire-important-squid-465.mypinata.cloud/ipfs/${product.imageCID}`}
+                  onLoad={handleImageLoad}
+                  onError={handleImageLoad}
+                  alt="product"
+                  className="w-full h-full object-cover"
+                />
+                <button
+                  className="absolute top-2 right-2 bg-white p-1 rounded-full shadow"
+                  onClick={() => document.getElementById(`image-${index}`).click()}
+                >
+                  ✏️
+                </button>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  id={`image-${index}`}
+                  onChange={(e) => handleImageChange(index, e.target.files[0])}
+                />
+              </div>
+              <div className="mt-2 space-y-1 text-sm text-gray-800">
+                <div className="flex justify-between items-center">
+                  <span className="font-medium">Name:</span>
+                  <input
+                    value={product.name}
+                    onChange={(e) => handleFieldChange(index, "name", e.target.value)}
+                    className="bg-transparent border-none text-right focus:outline-none focus:ring-0"
+                  />
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="font-medium">Price:</span>
+                  <input
+                    type="number"
+                    value={product.price}
+                    onChange={(e) => handleFieldChange(index, "price", e.target.value)}
+                    className="bg-transparent border-none text-right focus:outline-none focus:ring-0"
+                  />
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="font-medium">Stock:</span>
+                  <input
+                    type="number"
+                    value={product.stock}
+                    onChange={(e) => handleFieldChange(index, "stock", e.target.value)}
+                    className="bg-transparent border-none text-right focus:outline-none focus:ring-0"
+                  />
+                </div>
+              </div>
+              {product.updated && (
+                <button
+                  onClick={() => handleUpdate(product, index)}
+                  className="mt-3 w-full bg-blue-600 text-white py-1.5 rounded hover:bg-blue-700"
+                >
+                  Update
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {errorMessage && (
+          <div className="fixed top-6 right-6 z-50">
+            <div className="flex items-start gap-3 p-4 rounded-lg shadow-lg text-white bg-red-600">
+              <div className="flex-1">
+                <p className="font-medium">{errorMessage}</p>
+              </div>
+              <button
+                onClick={() => setErrorMessage("")}
+                className="text-white hover:text-gray-200 text-xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+
+        {loading && (
+          <div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center backdrop-blur-sm">
+            <div className="text-center animate-pulse">
+              <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-lg font-medium text-blue-700">Loading inventory...</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </SellerLayout>
+  );
+}

@@ -20,19 +20,21 @@ contract InventoryRegistry {
         string imageCID;
         address owner;
         uint256 releaseDate;
+        bool status; // true = enabled for sale, false = not enabled
     }
 
     uint256 private nextProductId = 1;
 
-    mapping(uint256 => Product) public products;
+    mapping(uint256 => Product) private products;
     mapping(address => uint256[]) private sellerProducts;
 
     event ProductAdded(uint256 productId, address seller);
     event ProductPriceUpdated(uint256 productId, uint256 newPrice);
-    event ProductStockIncreased(uint256 productId, uint256 addedUnits);
+    event ProductStockChanged(uint256 productId, uint256 newStock);
     event ProductNameUpdated(uint256 productId, string newName);
     event ProductCategoryUpdated(uint256 productId, Category newCategory);
     event ProductImageCIDUpdated(uint256 productId, string newCID);
+    event ProductStatusChanged(uint256 productId, bool newStatus);
 
     modifier onlyOwner(uint256 productId) {
         require(products[productId].owner == msg.sender, "Not the product owner");
@@ -56,13 +58,19 @@ contract InventoryRegistry {
             availableUnits: availableUnits,
             imageCID: imageCID,
             owner: msg.sender,
-            releaseDate: block.timestamp
+            releaseDate: block.timestamp,
+            status: true
         });
 
         products[productId] = newProduct;
         sellerProducts[msg.sender].push(productId);
 
         emit ProductAdded(productId, msg.sender);
+    }
+
+    function getProduct(uint256 productId) public view returns (Product memory) {
+        require(products[productId].owner != address(0), "Product does not exist");
+        return products[productId];
     }
 
     function getProductsBySeller(address seller) external view returns (Product[] memory) {
@@ -76,14 +84,63 @@ contract InventoryRegistry {
         return result;
     }
 
+    function getProductsByCategory(Category category) external view returns (Product[] memory) {
+        uint256 total = nextProductId - 1;
+        uint256 count = 0;
+
+        for (uint256 i = 1; i <= total; i++) {
+            if (products[i].owner != address(0) && products[i].category == category) {
+                count++;
+            }
+        }
+
+        Product[] memory result = new Product[](count);
+        uint256 j = 0;
+
+        for (uint256 i = 1; i <= total; i++) {
+            if (products[i].owner != address(0) && products[i].category == category) {
+                result[j++] = products[i];
+            }
+        }
+
+        return result;
+    }
+
+    function getProductsBySellerOfCategory(address seller, Category category) external view returns (Product[] memory) {
+        uint256[] memory ids = sellerProducts[seller];
+        uint256 count = 0;
+
+        for (uint256 i = 0; i < ids.length; i++) {
+            if (products[ids[i]].category == category) {
+                count++;
+            }
+        }
+
+        Product[] memory result = new Product[](count);
+        uint256 j = 0;
+
+        for (uint256 i = 0; i < ids.length; i++) {
+            if (products[ids[i]].category == category) {
+                result[j++] = products[ids[i]];
+            }
+        }
+
+        return result;
+    }
+
     function updateProductPrice(uint256 productId, uint256 newPrice) public onlyOwner(productId) {
         products[productId].price = newPrice;
         emit ProductPriceUpdated(productId, newPrice);
     }
 
-    function increaseProductStock(uint256 productId, uint256 addedUnits) public onlyOwner(productId) {
-        products[productId].availableUnits += addedUnits;
-        emit ProductStockIncreased(productId, addedUnits);
+    function changeProductStock(uint256 productId, uint256 newStock) public onlyOwner(productId) {
+        products[productId].availableUnits = newStock;
+        emit ProductStockChanged(productId, newStock);
+    }
+
+    function changeProductStatus(uint256 productId, bool newStatus) public onlyOwner(productId) {
+        products[productId].status = newStatus;
+        emit ProductStatusChanged(productId, newStatus);
     }
 
     function updateProductName(uint256 productId, string memory newName) public onlyOwner(productId) {
