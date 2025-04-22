@@ -128,6 +128,31 @@ contract InventoryRegistry {
         return result;
     }
 
+    // New function to get all products
+    function getAllProducts() external view returns (Product[] memory) {
+        uint256 total = nextProductId - 1;
+        uint256 count = 0;
+
+        // Count how many products exist
+        for (uint256 i = 1; i <= total; i++) {
+            if (products[i].owner != address(0)) {
+                count++;
+            }
+        }
+
+        Product[] memory result = new Product[](count);
+        uint256 j = 0;
+
+        // Add the products to the result array
+        for (uint256 i = 1; i <= total; i++) {
+            if (products[i].owner != address(0)) {
+                result[j++] = products[i];
+            }
+        }
+
+        return result;
+    }
+
     function updateProduct(
         uint256 productId,
         string memory newName,
