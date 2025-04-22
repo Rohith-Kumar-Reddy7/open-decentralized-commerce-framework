@@ -1,13 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import BuyerLayout from '@/components/BuyerLayout';
-import { BrowserProvider, Contract, ethers } from "ethers";
+import { BrowserProvider, ethers } from "ethers";
 import SellerRegistryABI from "@/contracts/SellerRegistryABI.json";
 import InventoryRegistryABI from "@/contracts/InventoryRegistryABI.json";
 import { CONTRACT_ADDRESSES } from '@/constants/contracts';
 
 export default function MarketplacePage() {
+  const router = useRouter();
+
   const [city, setCity] = useState('');
   const [category, setCategory] = useState('');
   const [inputCity, setInputCity] = useState('');
@@ -15,17 +18,21 @@ export default function MarketplacePage() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState('Loading products...');
-  const [imagesLoaded, setImagesLoaded] = useState(0); // Track loaded images
-  const [totalImages, setTotalImages] = useState(0); // Track total number of images
+  const [imagesLoaded, setImagesLoaded] = useState(0);
+  const [totalImages, setTotalImages] = useState(0);
+
+  const [cart, setCart] = useState([]);
+  const [quantities, setQuantities] = useState({});
+  const [currentSeller, setCurrentSeller] = useState(null);
 
   const inventoryContractAddress = CONTRACT_ADDRESSES.InventoryRegistry;
   const sellerContractAddress = CONTRACT_ADDRESSES.SellerRegistry;
 
   useEffect(() => {
     const fetchProducts = async () => {
-      setLoading(true); // Start loading
-      setImagesLoaded(0); // Reset images loaded count
-      setTotalImages(0); // Reset total image count for each search
+      setLoading(true);
+      setImagesLoaded(0);
+      setTotalImages(0);
 
       const provider = new BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
@@ -42,9 +49,6 @@ export default function MarketplacePage() {
           if (category) {
             const categoryEnum = parseCategory(category);
             fetchedProducts = await inventoryRegistryContract.getProductsByCategory(categoryEnum);
-          } else {
-            const totalProducts = await inventoryRegistryContract.getProductsBySeller(address);
-            fetchedProducts = totalProducts;
           }
         } else {
           const sellersInCity = await sellerRegistryContract.getSellersByCity(city);
@@ -60,11 +64,8 @@ export default function MarketplacePage() {
           }
         }
 
-        // Update the total number of images for all products
         totalImageCount = fetchedProducts.length;
-        setTotalImages(totalImageCount); // Update total image count state
-
-        // Set the fetched products
+        setTotalImages(totalImageCount);
         setProducts(fetchedProducts);
       } catch (error) {
         console.error('Error fetching products:', error);
@@ -72,21 +73,24 @@ export default function MarketplacePage() {
     };
 
     fetchProducts();
-  }, [city, category]); // Trigger effect on city/category change
+  }, [city, category]);
 
-  // Image load handler
   const handleImageLoad = () => {
-    setImagesLoaded((prev) => prev + 1); // Increment the count of loaded images
+    setImagesLoaded((prev) => prev + 1);
   };
 
-  // Handle search submit (city and category filter)
+  useEffect(() => {
+    if (imagesLoaded === totalImages) {
+      setLoading(false);
+    }
+  }, [imagesLoaded, totalImages]);
+
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     setCity(inputCity);
     setCategory(inputCategory);
   };
 
-  // Map categories to numeric values
   const parseCategory = (category) => {
     switch (category) {
       case 'Fashion': return 0;
@@ -99,53 +103,89 @@ export default function MarketplacePage() {
     }
   };
 
-  useEffect(() => {
-    // Check if all images are loaded, and then stop the loading spinner
-    if (imagesLoaded === totalImages) {
-      setLoading(false); // Stop loading spinner when all images are loaded
+  const handleQuantityChange = (productId, value) => {
+    setQuantities((prev) => ({
+      ...prev,
+      [productId]: Number(value),
+    }));
+  };
+
+  const handleAddToCart = (product) => {
+    const quantity = quantities[product.id] || 1;
+
+    if (quantity < 1 || quantity > product.availableUnits) {
+      alert(`Invalid quantity for ${product.name}`);
+      return;
     }
-  }, [imagesLoaded, totalImages]); // Trigger effect when imagesLoaded or totalImages change
+
+    if (cart.length === 0) {
+      setCurrentSeller(product.owner);
+    } else if (product.owner !== currentSeller) {
+      alert("You can only add products from the same seller in one checkout.");
+      return;
+    }
+
+    if (cart.some((item) => item.productId === product.id)) {
+      alert("Product already in cart.");
+      return;
+    }
+
+    const item = {
+      productId: product.id,
+      quantity,
+      unitPrice: product.price,
+    };
+
+    setCart([...cart, item]);
+  };
+
+  const handleCheckout = () => {
+    if (cart.length === 0) {
+      alert("Your cart is empty!");
+      return;
+    }
+
+    // You might store cart in localStorage or state management instead
+    localStorage.setItem("checkoutCart", JSON.stringify(cart));
+    router.push('/buyer/checkout');
+  };
 
   return (
     <BuyerLayout>
       <div className="min-h-screen bg-gray-50 px-4 py-10">
-        {/* Filter Bar - Positioned at the top, touching the header */}
+        {/* Filter Bar */}
         <div className="bg-white shadow-md p-4 w-full sticky top-0 z-10">
           <form onSubmit={handleSearchSubmit} className="flex gap-4">
-            <div className="flex-1">
-              <input
-                type="text"
-                placeholder="Enter your city"
-                value={inputCity}
-                onChange={(e) => setInputCity(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-              />
-            </div>
-            <div className="flex-1">
-              <select
-                value={inputCategory}
-                onChange={(e) => setInputCategory(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-              >
-                <option value="">Select Category</option>
-                <option value="Fashion">Fashion</option>
-                <option value="Electronics">Electronics</option>
-                <option value="Furniture">Furniture</option>
-                <option value="Books">Books</option>
-                <option value="Beauty">Beauty</option>
-                <option value="Sports">Sports</option>
-              </select>
-            </div>
-            <button
-              type="submit"
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg"
+            <input
+              type="text"
+              placeholder="Enter your city"
+              value={inputCity}
+              onChange={(e) => setInputCity(e.target.value)}
+              className="w-full px-4 py-2 border rounded-lg"
+            />
+            <select
+              value={inputCategory}
+              onChange={(e) => setInputCategory(e.target.value)}
+              className="w-full px-4 py-2 border rounded-lg"
             >
-              <i className="fas fa-search"></i> Search
+              <option value="">Select Category</option>
+              <option value="Fashion">Fashion</option>
+              <option value="Electronics">Electronics</option>
+              <option value="Furniture">Furniture</option>
+              <option value="Books">Books</option>
+              <option value="Beauty">Beauty</option>
+              <option value="Sports">Sports</option>
+            </select>
+            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg">
+              Search
+            </button>
+            <button type="button" onClick={handleCheckout} className="bg-green-600 text-white px-4 py-2 rounded-lg">
+              Checkout ({cart.length})
             </button>
           </form>
         </div>
 
-        {/* Loading Spinner */}
+        {/* Loading */}
         {loading && (
           <div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center backdrop-blur-sm">
             <div className="text-center animate-pulse">
@@ -155,7 +195,7 @@ export default function MarketplacePage() {
           </div>
         )}
 
-        {/* Display Products */}
+        {/* Products Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 mt-10">
           {!loading && products.length === 0 && (
             <p className="text-center text-gray-500">No products found based on your search criteria.</p>
@@ -168,12 +208,28 @@ export default function MarketplacePage() {
                 alt={product.name}
                 className="w-full h-64 object-cover rounded-md mb-4"
                 onLoad={handleImageLoad}
-                onError={handleImageLoad} // Handles both image load and error to increment the count
+                onError={handleImageLoad}
               />
               <h3 className="text-lg font-semibold">{product.name}</h3>
               <p className="text-gray-500">{product.category}</p>
               <p className="text-xl font-bold mt-2">{product.price} tinybars</p>
               <p className="text-sm text-gray-400">Available: {product.availableUnits}</p>
+
+              <input
+                type="number"
+                min="1"
+                max={product.availableUnits}
+                value={quantities[product.id] || ''}
+                onChange={(e) => handleQuantityChange(product.id, e.target.value)}
+                placeholder="Quantity"
+                className="mt-2 px-2 py-1 border w-full rounded-md"
+              />
+              <button
+                onClick={() => handleAddToCart(product)}
+                className="w-full mt-2 bg-indigo-600 text-white py-2 rounded-lg"
+              >
+                Add to Cart
+              </button>
             </div>
           ))}
         </div>
