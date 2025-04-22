@@ -498,6 +498,49 @@
             },
             {
                 "internalType": "string",
+                "name": "newName",
+                "type": "string"
+            },
+            {
+                "internalType": "string",
+                "name": "newCategoryStr",
+                "type": "string"
+            },
+            {
+                "internalType": "uint256",
+                "name": "newPrice",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "newStock",
+                "type": "uint256"
+            },
+            {
+                "internalType": "string",
+                "name": "newImageCID",
+                "type": "string"
+            },
+            {
+                "internalType": "bool",
+                "name": "newStatus",
+                "type": "bool"
+            }
+        ],
+        "name": "updateProduct",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "productId",
+                "type": "uint256"
+            },
+            {
+                "internalType": "string",
                 "name": "newCategory",
                 "type": "string"
             }

@@ -128,6 +128,49 @@ contract InventoryRegistry {
         return result;
     }
 
+    function updateProduct(
+        uint256 productId,
+        string memory newName,
+        string memory newCategoryStr,
+        uint256 newPrice,
+        uint256 newStock,
+        string memory newImageCID,
+        bool newStatus
+    ) public onlyOwner(productId) {
+        Product storage product = products[productId];
+
+        if (keccak256(bytes(product.name)) != keccak256(bytes(newName))) {
+            product.name = newName;
+            emit ProductNameUpdated(productId, newName);
+        }
+
+        Category newCategory = parseCategory(newCategoryStr);
+        if (product.category != newCategory) {
+            product.category = newCategory;
+            emit ProductCategoryUpdated(productId, newCategory);
+        }
+
+        if (product.price != newPrice) {
+            product.price = newPrice;
+            emit ProductPriceUpdated(productId, newPrice);
+        }
+
+        if (product.availableUnits != newStock) {
+            product.availableUnits = newStock;
+            emit ProductStockChanged(productId, newStock);
+        }
+
+        if (keccak256(bytes(product.imageCID)) != keccak256(bytes(newImageCID))) {
+            product.imageCID = newImageCID;
+            emit ProductImageCIDUpdated(productId, newImageCID);
+        }
+
+        if (product.status != newStatus) {
+            product.status = newStatus;
+            emit ProductStatusChanged(productId, newStatus);
+        }
+    }
+
     function updateProductPrice(uint256 productId, uint256 newPrice) public onlyOwner(productId) {
         products[productId].price = newPrice;
         emit ProductPriceUpdated(productId, newPrice);

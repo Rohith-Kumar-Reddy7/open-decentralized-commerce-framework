@@ -10,14 +10,7 @@ import { CONTRACT_ADDRESSES } from "@/constants/contracts";
 const SELLER_REGISTRY_ADDRESS = CONTRACT_ADDRESSES.SellerRegistry;
 const INVENTORY_REGISTRY_ADDRESS = CONTRACT_ADDRESSES.InventoryRegistry;
 
-const categoryEnum = [
-  "Fashion",
-  "Electronics",
-  "Furniture",
-  "Books",
-  "Beauty",
-  "Sports",
-];
+const categoryEnum = ["Fashion", "Electronics", "Furniture", "Books", "Beauty", "Sports"];
 
 export default function InventoryPage() {
   const [wallet, setWallet] = useState(null);
@@ -27,6 +20,7 @@ export default function InventoryPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [imagesLoaded, setImagesLoaded] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [selectedImage, setSelectedImage] = useState(null);
 
   useEffect(() => {
     async function init() {
@@ -38,12 +32,7 @@ export default function InventoryPage() {
           const provider = new BrowserProvider(window.ethereum);
           const signer = await provider.getSigner();
 
-          const sellerRegistry = new Contract(
-            SELLER_REGISTRY_ADDRESS,
-            SellerRegistryABI,
-            signer
-          );
-
+          const sellerRegistry = new Contract(SELLER_REGISTRY_ADDRESS, SellerRegistryABI, signer);
           const registered = await sellerRegistry.isRegistered(account);
           setIsRegistered(registered);
 
@@ -53,12 +42,7 @@ export default function InventoryPage() {
             return;
           }
 
-          const inventoryRegistry = new Contract(
-            INVENTORY_REGISTRY_ADDRESS,
-            InventoryRegistryABI,
-            signer
-          );
-
+          const inventoryRegistry = new Contract(INVENTORY_REGISTRY_ADDRESS, InventoryRegistryABI, signer);
           const sellerProducts = await inventoryRegistry.getProductsBySeller(account);
 
           const formatted = sellerProducts.map((product) => ({
@@ -67,6 +51,7 @@ export default function InventoryPage() {
             category: categoryEnum[Number(product.category)],
             price: product.price.toString(),
             stock: product.availableUnits.toString(),
+            status: product.status,
             imageCID: product.imageCID,
             releaseDate: new Date(Number(product.releaseDate) * 1000).toLocaleDateString(),
             updated: false,
@@ -100,74 +85,86 @@ export default function InventoryPage() {
     setProducts(updated);
   };
 
-  const handleImageChange = (index, file) => {
-    const fakeCID = "newCID_simulated";
-    handleFieldChange(index, "imageCID", fakeCID);
+  const handleImageChange = async (index, file) => {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/uploadToIPFS", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.error("Upload failed:", data.error);
+        return;
+      }
+
+      const cid = data.cid;
+      handleFieldChange(index, "imageCID", cid);
+    } catch (err) {
+      console.error("Image upload error:", err);
+    }
   };
 
   const handleUpdate = async (product, index) => {
-    const provider = new BrowserProvider(window.ethereum);
-    const signer = await provider.getSigner();
-    const contract = new Contract(INVENTORY_REGISTRY_ADDRESS, InventoryRegistryABI, signer);
-
-    const updates = [];
-    const original = originalProducts[index];
-
+    setLoading(true);
     try {
-      if (product.price !== original.price) {
-        updates.push(contract.updateProductPrice(product.id, product.price));
-      }
-      if (product.stock !== original.stock) {
-        if (parseInt(product.stock) < parseInt(original.stock)) {
-          alert("Stock can only be increased.");
-          return;
-        }
-        const addedStock = parseInt(product.stock) - parseInt(original.stock);
-        updates.push(contract.increaseProductStock(product.id, addedStock));
-      }
-      if (product.imageCID !== original.imageCID) {
-        updates.push(contract.updateProductImageCID(product.id, product.imageCID));
-      }
-      if (product.name !== original.name) {
-        updates.push(contract.updateProductName(product.id, product.name));
-      }
+      const provider = new BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const contract = new Contract(INVENTORY_REGISTRY_ADDRESS, InventoryRegistryABI, signer);
 
-      await Promise.all(updates);
+      const tx = await contract.updateProduct(
+        product.id,
+        product.name,
+        product.category,
+        product.price,
+        parseInt(product.stock),
+        product.imageCID,
+        product.status
+      );
+
+      await tx.wait();
+
       alert("Product updated successfully!");
+
       const updated = [...products];
       updated[index].updated = false;
       setProducts(updated);
+
+      const newOriginals = [...originalProducts];
+      newOriginals[index] = { ...product, updated: false };
+      setOriginalProducts(newOriginals);
     } catch (err) {
-      console.error(err);
-      alert("Update failed.");
+      console.error("Update failed:", err);
+      alert("Update failed. See console for details.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <SellerLayout>
-      <div className="p-4 min-h-screen bg-gray-50">
-        <h1 className="text-2xl font-semibold text-center text-gray-700 mb-6">My Inventory</h1>
+      <div className="p-6 bg-gray-50 min-h-screen">
+        <h1 className="text-3xl font-bold text-center text-gray-700 mb-8">My Inventory</h1>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {products.map((product, index) => (
             <div
               key={product.id}
-              className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 hover:shadow-md transition-all"
+              className="bg-white rounded-2xl shadow-md border border-gray-200 p-4 hover:shadow-lg transition-all relative"
             >
-              <div className="relative rounded-lg overflow-hidden aspect-[4/3]">
+              <div className="relative rounded-xl overflow-hidden aspect-[4/3] bg-gray-100 flex items-center justify-center cursor-pointer">
                 <img
                   src={`https://sapphire-important-squid-465.mypinata.cloud/ipfs/${product.imageCID}`}
+                  alt="Product"
+                  className="object-contain w-full h-full"
+                  onClick={() => setSelectedImage(product.imageCID)}
                   onLoad={handleImageLoad}
                   onError={handleImageLoad}
-                  alt="product"
-                  className="w-full h-full object-cover"
                 />
-                <button
-                  className="absolute top-2 right-2 bg-white p-1 rounded-full shadow"
-                  onClick={() => document.getElementById(`image-${index}`).click()}
-                >
-                  ✏️
-                </button>
                 <input
                   type="file"
                   accept="image/*"
@@ -175,23 +172,30 @@ export default function InventoryPage() {
                   id={`image-${index}`}
                   onChange={(e) => handleImageChange(index, e.target.files[0])}
                 />
+                <button
+                  className="absolute top-2 right-2 bg-white p-1 rounded-full shadow-md"
+                  onClick={() => document.getElementById(`image-${index}`).click()}
+                >
+                  ✏️
+                </button>
               </div>
-              <div className="mt-2 space-y-1 text-sm text-gray-800">
+
+              <div className="mt-4 space-y-2 text-sm text-gray-800">
                 <div className="flex justify-between items-center">
                   <span className="font-medium">Name:</span>
                   <input
                     value={product.name}
                     onChange={(e) => handleFieldChange(index, "name", e.target.value)}
-                    className="bg-transparent border-none text-right focus:outline-none focus:ring-0"
+                    className="bg-transparent text-right border-none focus:outline-none focus:ring-0"
                   />
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="font-medium">Price:</span>
+                  <span className="font-medium">Price (tinybars):</span>
                   <input
                     type="number"
                     value={product.price}
                     onChange={(e) => handleFieldChange(index, "price", e.target.value)}
-                    className="bg-transparent border-none text-right focus:outline-none focus:ring-0"
+                    className="bg-transparent text-right border-none focus:outline-none focus:ring-0"
                   />
                 </div>
                 <div className="flex justify-between items-center">
@@ -200,14 +204,26 @@ export default function InventoryPage() {
                     type="number"
                     value={product.stock}
                     onChange={(e) => handleFieldChange(index, "stock", e.target.value)}
-                    className="bg-transparent border-none text-right focus:outline-none focus:ring-0"
+                    className="bg-transparent text-right border-none focus:outline-none focus:ring-0"
                   />
                 </div>
+                <div className="flex justify-between items-center">
+                  <span className="font-medium">Status:</span>
+                  <select
+                    value={product.status ? "true" : "false"}
+                    onChange={(e) => handleFieldChange(index, "status", e.target.value === "true")}
+                    className="text-right bg-transparent focus:outline-none"
+                  >
+                    <option value="true">Enabled</option>
+                    <option value="false">Disabled</option>
+                  </select>
+                </div>
               </div>
+
               {product.updated && (
                 <button
                   onClick={() => handleUpdate(product, index)}
-                  className="mt-3 w-full bg-blue-600 text-white py-1.5 rounded hover:bg-blue-700"
+                  className="mt-4 w-full bg-blue-600 text-white py-2 rounded-xl hover:bg-blue-700"
                 >
                   Update
                 </button>
@@ -216,12 +232,31 @@ export default function InventoryPage() {
           ))}
         </div>
 
+        {selectedImage && (
+          <div
+            className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"
+            onClick={() => setSelectedImage(null)}
+          >
+            <div className="relative max-w-3xl w-full p-4">
+              <img
+                src={`https://sapphire-important-squid-465.mypinata.cloud/ipfs/${selectedImage}`}
+                className="rounded-lg max-h-[90vh] w-full object-contain"
+                alt="Full-size"
+              />
+              <button
+                onClick={() => setSelectedImage(null)}
+                className="absolute top-2 right-2 text-white text-2xl bg-black/50 rounded-full px-3 py-1"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+
         {errorMessage && (
           <div className="fixed top-6 right-6 z-50">
             <div className="flex items-start gap-3 p-4 rounded-lg shadow-lg text-white bg-red-600">
-              <div className="flex-1">
-                <p className="font-medium">{errorMessage}</p>
-              </div>
+              <p className="font-medium">{errorMessage}</p>
               <button
                 onClick={() => setErrorMessage("")}
                 className="text-white hover:text-gray-200 text-xl font-bold"

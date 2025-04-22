@@ -18,15 +18,35 @@ export default function SellerRegisterPage() {
     locationAddress: '',
   });
 
+  const [errors, setErrors] = useState({});
   const [status, setStatus] = useState('');
-  const [statusType, setStatusType] = useState(''); // "success", "error", "info"
+  const [statusType, setStatusType] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const validate = () => {
+    const newErrors = {};
+    const phoneRegex = /^\d{10}$/;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!phoneRegex.test(form.phone)) {
+      newErrors.phone = 'Phone must be a valid 10-digit number';
+    }
+    if (!emailRegex.test(form.email)) {
+      newErrors.email = 'Invalid email address';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
+    setErrors({ ...errors, [e.target.name]: '' }); // clear error on change
   };
 
   const registerSeller = async () => {
+    if (!validate()) return;
+
     try {
       if (!window.ethereum) {
         alert('Please install MetaMask');
@@ -86,13 +106,9 @@ export default function SellerRegisterPage() {
   };
 
   const renderStatusIcon = () => {
-    if (statusType === 'success') {
-      return <span className="text-green-600 text-2xl">✅</span>;
-    } else if (statusType === 'error') {
-      return <span className="text-red-600 text-2xl">❌</span>;
-    } else if (statusType === 'info') {
-      return <span className="text-yellow-600 text-2xl">⚠️</span>;
-    }
+    if (statusType === 'success') return <span className="text-green-600 text-2xl">✅</span>;
+    if (statusType === 'error') return <span className="text-red-600 text-2xl">❌</span>;
+    if (statusType === 'info') return <span className="text-yellow-600 text-2xl">⚠️</span>;
     return null;
   };
 
@@ -101,11 +117,11 @@ export default function SellerRegisterPage() {
       <div className="relative min-h-screen flex items-center justify-center bg-gray-50 px-4">
         {loading && (
           <div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center backdrop-blur-sm">
-          <div className="text-center animate-pulse">
-            <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-lg font-medium text-blue-700">Waiting for transaction confirmation...</p>
+            <div className="text-center animate-pulse">
+              <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-lg font-medium text-blue-700">Waiting for transaction confirmation...</p>
+            </div>
           </div>
-        </div>
         )}
 
         <div
@@ -127,13 +143,20 @@ export default function SellerRegisterPage() {
                   {field.replace(/([A-Z])/g, ' $1')}
                 </label>
                 <input
-                  type="text"
+                  type={field === 'email' ? 'email' : 'text'}
                   name={field}
                   value={form[field]}
                   onChange={handleChange}
                   required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`w-full px-4 py-2 border ${
+                    errors[field] ? 'border-red-500' : 'border-gray-300'
+                  } rounded-lg focus:outline-none focus:ring-2 ${
+                    errors[field] ? 'focus:ring-red-400' : 'focus:ring-blue-500'
+                  }`}
                 />
+                {errors[field] && (
+                  <p className="text-red-500 text-sm mt-1">{errors[field]}</p>
+                )}
               </div>
             ))}
 
