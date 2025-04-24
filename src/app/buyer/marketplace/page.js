@@ -25,6 +25,11 @@ export default function MarketplacePage() {
   const [quantities, setQuantities] = useState({});
   const [currentSeller, setCurrentSeller] = useState(null);
 
+  const [showBill, setShowBill] = useState(false);
+  const [validatedCart, setValidatedCart] = useState([]);
+  const [totalAmount, setTotalAmount] = useState(0);
+  const [billError, setBillError] = useState('');
+
   const inventoryContractAddress = CONTRACT_ADDRESSES.InventoryRegistry;
   const sellerContractAddress = CONTRACT_ADDRESSES.SellerRegistry;
 
@@ -75,9 +80,7 @@ export default function MarketplacePage() {
     fetchProducts();
   }, [city, category]);
 
-  const handleImageLoad = () => {
-    setImagesLoaded((prev) => prev + 1);
-  };
+  const handleImageLoad = () => setImagesLoaded(prev => prev + 1);
 
   useEffect(() => {
     if (imagesLoaded === totalImages) {
@@ -103,18 +106,32 @@ export default function MarketplacePage() {
     }
   };
 
-  const handleQuantityChange = (productId, value) => {
-    setQuantities((prev) => ({
-      ...prev,
-      [productId]: Number(value),
-    }));
+  const parseToCategoryString = (category) => {
+    const cat = Number(category);
+    switch (cat) {
+      case 0: return 'Fashion';
+      case 1: return 'Electronics';
+      case 2: return 'Furniture';
+      case 3: return 'Books';
+      case 4: return 'Beauty';
+      case 5: return 'Sports';
+      default: return 'Others';
+    }
   };
 
-  const handleAddToCart = (product) => {
-    const quantity = quantities[product.id] || 1;
+  const handleQuantityChange = (productId, value) => {
+    setQuantities(prev => ({ ...prev, [productId]: Number(value) }));
+  };
 
-    if (quantity < 1 || quantity > product.availableUnits) {
-      alert(`Invalid quantity for ${product.name}`);
+  const handleAddToCart = async (product) => {
+    const quantity = quantities[product.id] || 1;
+    const provider = new BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+    const inventoryRegistryContract = new ethers.Contract(inventoryContractAddress, InventoryRegistryABI, signer);
+    const tempProduct = await inventoryRegistryContract.getProduct(product.id);
+
+    if (quantity < 1 || quantity > tempProduct.availableUnits) {
+      alert(`Invalid quantity for ${product.name}, refresh page to see updated stock`);
       return;
     }
 
@@ -125,29 +142,91 @@ export default function MarketplacePage() {
       return;
     }
 
-    if (cart.some((item) => item.productId === product.id)) {
-      alert("Product already in cart.");
-      return;
+    const existingItemIndex = cart.findIndex((item) => item.product.id === product.id);
+    const productWithLiveData = { ...product, price: tempProduct.price, availableUnits: tempProduct.availableUnits };
+
+    if (existingItemIndex !== -1) {
+      const updatedCart = [...cart];
+      updatedCart[existingItemIndex] = { ...updatedCart[existingItemIndex], quantity, product: productWithLiveData };
+      setCart(updatedCart);
+    } else {
+      setCart([...cart, { product: productWithLiveData, quantity }]);
     }
 
-    const item = {
-      productId: product.id,
-      quantity,
-      unitPrice: product.price,
-    };
-
-    setCart([...cart, item]);
+    alert("Added to cart");
   };
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (cart.length === 0) {
       alert("Your cart is empty!");
       return;
     }
-
-    // You might store cart in localStorage or state management instead
-    localStorage.setItem("checkoutCart", JSON.stringify(cart));
+  
+    const provider = new BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+    const inventoryRegistryContract = new ethers.Contract(
+      inventoryContractAddress,
+      InventoryRegistryABI,
+      signer
+    );
+  
+    let updatedCart = [];
+    let error = null;
+    let total = 0;
+  
+    for (const item of cart) {
+      const liveProduct = await inventoryRegistryContract.getProduct(item.product.id);
+  
+      if (item.quantity > liveProduct.availableUnits) {
+        error = `Product "${item.product.name}" has only ${liveProduct.availableUnits} units available.`;
+        break;
+      }
+  
+      const updatedProduct = {
+        ...item.product,
+        price: liveProduct.price,
+        availableUnits: liveProduct.availableUnits,
+      };
+  
+      updatedCart.push({
+        product: updatedProduct,
+        quantity: item.quantity,
+      });
+  
+      total += Number(liveProduct.price) * item.quantity;
+    }
+  
+    if (error) {
+      alert(error);
+      return;
+    }
+  
+    // Save cart and total in localStorage or state
+    localStorage.setItem("checkoutCart", JSON.stringify(updatedCart));
+    localStorage.setItem("checkoutTotal", total.toString());
+  
+    // Navigate to the checkout confirmation page
     router.push('/buyer/checkout');
+  };
+  
+  const handlePay = async () => {
+    try {
+      const provider = new BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+
+      const tx = await signer.sendTransaction({
+        to: validatedCart[0].product.owner,
+        value: ethers.parseUnits(totalAmount.toString(), "wei")
+      });
+
+      alert("Payment Successful! Txn Hash: " + tx.hash);
+      setCart([]);
+      setValidatedCart([]);
+      setShowBill(false);
+    } catch (err) {
+      console.error(err);
+      alert("Payment failed. Please try again.");
+    }
   };
 
   return (
@@ -156,18 +235,8 @@ export default function MarketplacePage() {
         {/* Filter Bar */}
         <div className="bg-white shadow-md p-4 w-full sticky top-0 z-10">
           <form onSubmit={handleSearchSubmit} className="flex gap-4">
-            <input
-              type="text"
-              placeholder="Enter your city"
-              value={inputCity}
-              onChange={(e) => setInputCity(e.target.value)}
-              className="w-full px-4 py-2 border rounded-lg"
-            />
-            <select
-              value={inputCategory}
-              onChange={(e) => setInputCategory(e.target.value)}
-              className="w-full px-4 py-2 border rounded-lg"
-            >
+            <input type="text" placeholder="Enter your city" value={inputCity} onChange={(e) => setInputCity(e.target.value)} className="w-full px-4 py-2 border rounded-lg" />
+            <select value={inputCategory} onChange={(e) => setInputCategory(e.target.value)} className="w-full px-4 py-2 border rounded-lg">
               <option value="">Select Category</option>
               <option value="Fashion">Fashion</option>
               <option value="Electronics">Electronics</option>
@@ -176,12 +245,8 @@ export default function MarketplacePage() {
               <option value="Beauty">Beauty</option>
               <option value="Sports">Sports</option>
             </select>
-            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg">
-              Search
-            </button>
-            <button type="button" onClick={handleCheckout} className="bg-green-600 text-white px-4 py-2 rounded-lg">
-              Checkout ({cart.length})
-            </button>
+            <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">Search</button>
+            <button type="button" onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg">Checkout ({cart.length})</button>
           </form>
         </div>
 
@@ -203,36 +268,49 @@ export default function MarketplacePage() {
 
           {products.map((product) => (
             <div key={product.id} className="border border-gray-300 rounded-lg p-4 bg-white shadow-md">
-              <img
-                src={`https://sapphire-important-squid-465.mypinata.cloud/ipfs/${product.imageCID}`}
-                alt={product.name}
-                className="w-full h-64 object-cover rounded-md mb-4"
-                onLoad={handleImageLoad}
-                onError={handleImageLoad}
-              />
+              <img src={`https://sapphire-important-squid-465.mypinata.cloud/ipfs/${product.imageCID}`} alt={product.name} className="w-full h-64 object-cover rounded-md mb-4" onLoad={handleImageLoad} onError={handleImageLoad} />
               <h3 className="text-lg font-semibold">{product.name}</h3>
-              <p className="text-gray-500">{product.category}</p>
+              <p className="text-gray-500">{parseToCategoryString(product.category)}</p>
               <p className="text-xl font-bold mt-2">{product.price} tinybars</p>
               <p className="text-sm text-gray-400">Available: {product.availableUnits}</p>
-
-              <input
-                type="number"
-                min="1"
-                max={product.availableUnits}
-                value={quantities[product.id] || ''}
-                onChange={(e) => handleQuantityChange(product.id, e.target.value)}
-                placeholder="Quantity"
-                className="mt-2 px-2 py-1 border w-full rounded-md"
-              />
-              <button
-                onClick={() => handleAddToCart(product)}
-                className="w-full mt-2 bg-indigo-600 text-white py-2 rounded-lg"
-              >
-                Add to Cart
-              </button>
+              <input type="number" min="1" max={product.availableUnits} value={quantities[product.id] || ''} onChange={(e) => handleQuantityChange(product.id, e.target.value)} placeholder="Quantity" className="mt-2 px-2 py-1 border w-full rounded-md" />
+              <button onClick={() => handleAddToCart(product)} className="w-full mt-2 bg-indigo-600 hover:bg-indigo-800 text-white py-2 rounded-lg">Add to Cart</button>
             </div>
           ))}
         </div>
+
+        {/* Bill Summary Modal */}
+        {showBill && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+            <div className="bg-white rounded-xl shadow-lg p-6 max-w-lg w-full space-y-4">
+              <h2 className="text-xl font-semibold">Bill Summary</h2>
+              {billError ? (
+                <p className="text-red-500">{billError}</p>
+              ) : (
+                <>
+                  {validatedCart.map(({ product, quantity }) => (
+                    <div key={product.id} className="flex justify-between items-center border-b py-2">
+                      <div>
+                        <p className="font-medium">{product.name}</p>
+                        <p className="text-sm text-gray-500">Unit Price: {product.price} tinybars</p>
+                        <p className="text-sm text-gray-500">Qty: {quantity}</p>
+                      </div>
+                      <p className="font-semibold">{product.price * quantity} tinybars</p>
+                    </div>
+                  ))}
+                  <div className="flex justify-between pt-4 font-bold text-lg">
+                    <span>Total</span>
+                    <span>{totalAmount} tinybars</span>
+                  </div>
+                  <div className="flex justify-end gap-4 pt-4">
+                    <button onClick={() => setShowBill(false)} className="px-4 py-2 rounded-md bg-gray-300 hover:bg-gray-400">Cancel</button>
+                    <button onClick={handlePay} disabled={!!billError} className={`px-4 py-2 rounded-md text-white ${billError ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}>Pay</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </BuyerLayout>
   );

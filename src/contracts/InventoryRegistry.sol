@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+interface IOrderRegistry {
+    function getOwner() external view returns (address);
+}
+
 contract InventoryRegistry {
     enum Category {
         Fashion,
@@ -20,13 +24,14 @@ contract InventoryRegistry {
         string imageCID;
         address owner;
         uint256 releaseDate;
-        bool status; // true = enabled for sale, false = not enabled
+        bool status;
     }
 
     uint256 private nextProductId = 1;
-
     mapping(uint256 => Product) private products;
     mapping(address => uint256[]) private sellerProducts;
+
+    address public immutable escrowOwner;
 
     event ProductAdded(uint256 productId, address seller);
     event ProductPriceUpdated(uint256 productId, uint256 newPrice);
@@ -36,8 +41,20 @@ contract InventoryRegistry {
     event ProductImageCIDUpdated(uint256 productId, string newCID);
     event ProductStatusChanged(uint256 productId, bool newStatus);
 
-    modifier onlyOwner(uint256 productId) {
-        require(products[productId].owner == msg.sender, "Not the product owner");
+    constructor(address _escrowOwner) {
+        require(_escrowOwner != address(0), "Invalid escrow owner address");
+        escrowOwner = _escrowOwner;
+    }
+
+    modifier onlyOwnerOrEscrow(uint256 productId) {
+        address caller = msg.sender;
+        if (products[productId].owner != caller) {
+            try IOrderRegistry(caller).getOwner() returns (address orderOwner) {
+                require(orderOwner == escrowOwner, "Caller not authorized");
+            } catch {
+                revert("Caller not product owner or authorized escrow");
+            }
+        }
         _;
     }
 
@@ -71,6 +88,99 @@ contract InventoryRegistry {
     function getProduct(uint256 productId) public view returns (Product memory) {
         require(products[productId].owner != address(0), "Product does not exist");
         return products[productId];
+    }
+
+    function updateProduct(
+        uint256 productId,
+        string memory newName,
+        string memory newCategoryStr,
+        uint256 newPrice,
+        uint256 newStock,
+        string memory newImageCID,
+        bool newStatus
+    ) public onlyOwnerOrEscrow(productId) {
+        Product storage product = products[productId];
+
+        if (keccak256(bytes(product.name)) != keccak256(bytes(newName))) {
+            product.name = newName;
+            emit ProductNameUpdated(productId, newName);
+        }
+
+        Category newCategory = parseCategory(newCategoryStr);
+        if (product.category != newCategory) {
+            product.category = newCategory;
+            emit ProductCategoryUpdated(productId, newCategory);
+        }
+
+        if (product.price != newPrice) {
+            product.price = newPrice;
+            emit ProductPriceUpdated(productId, newPrice);
+        }
+
+        if (product.availableUnits != newStock) {
+            product.availableUnits = newStock;
+            emit ProductStockChanged(productId, newStock);
+        }
+
+        if (keccak256(bytes(product.imageCID)) != keccak256(bytes(newImageCID))) {
+            product.imageCID = newImageCID;
+            emit ProductImageCIDUpdated(productId, newImageCID);
+        }
+
+        if (product.status != newStatus) {
+            product.status = newStatus;
+            emit ProductStatusChanged(productId, newStatus);
+        }
+    }
+
+    function updateProductPrice(uint256 productId, uint256 newPrice) public onlyOwnerOrEscrow(productId) {
+        products[productId].price = newPrice;
+        emit ProductPriceUpdated(productId, newPrice);
+    }
+
+    function changeProductStock(uint256 productId, uint256 newStock) public onlyOwnerOrEscrow(productId) {
+        products[productId].availableUnits = newStock;
+        emit ProductStockChanged(productId, newStock);
+    }
+
+    function changeProductStatus(uint256 productId, bool newStatus) public onlyOwnerOrEscrow(productId) {
+        products[productId].status = newStatus;
+        emit ProductStatusChanged(productId, newStatus);
+    }
+
+    function updateProductName(uint256 productId, string memory newName) public onlyOwnerOrEscrow(productId) {
+        require(bytes(newName).length > 0, "Name cannot be empty");
+        products[productId].name = newName;
+        emit ProductNameUpdated(productId, newName);
+    }
+
+    function updateProductImageCID(uint256 productId, string memory newCID) public onlyOwnerOrEscrow(productId) {
+        require(bytes(newCID).length > 0, "Image CID cannot be empty");
+        products[productId].imageCID = newCID;
+        emit ProductImageCIDUpdated(productId, newCID);
+    }
+
+    function updateProductCategory(uint256 productId, string memory newCategory) public onlyOwnerOrEscrow(productId) {
+        Category categoryEnum = parseCategory(newCategory);
+        products[productId].category = categoryEnum;
+        emit ProductCategoryUpdated(productId, categoryEnum);
+    }
+
+    function parseCategory(string memory category) internal pure returns (Category) {
+        bytes32 hashed = keccak256(abi.encodePacked(category));
+
+        if (hashed == keccak256(abi.encodePacked("Fashion"))) return Category.Fashion;
+        if (hashed == keccak256(abi.encodePacked("Electronics"))) return Category.Electronics;
+        if (hashed == keccak256(abi.encodePacked("Furniture"))) return Category.Furniture;
+        if (hashed == keccak256(abi.encodePacked("Books"))) return Category.Books;
+        if (hashed == keccak256(abi.encodePacked("Beauty"))) return Category.Beauty;
+        if (hashed == keccak256(abi.encodePacked("Sports"))) return Category.Sports;
+
+        revert("Invalid category");
+    }
+
+    function isProductIdTaken(uint256 productId) public view returns (bool) {
+        return products[productId].owner != address(0);
     }
 
     function getProductsBySeller(address seller) external view returns (Product[] memory) {
@@ -128,12 +238,10 @@ contract InventoryRegistry {
         return result;
     }
 
-    // New function to get all products
     function getAllProducts() external view returns (Product[] memory) {
         uint256 total = nextProductId - 1;
         uint256 count = 0;
 
-        // Count how many products exist
         for (uint256 i = 1; i <= total; i++) {
             if (products[i].owner != address(0)) {
                 count++;
@@ -143,7 +251,6 @@ contract InventoryRegistry {
         Product[] memory result = new Product[](count);
         uint256 j = 0;
 
-        // Add the products to the result array
         for (uint256 i = 1; i <= total; i++) {
             if (products[i].owner != address(0)) {
                 result[j++] = products[i];
@@ -151,98 +258,5 @@ contract InventoryRegistry {
         }
 
         return result;
-    }
-
-    function updateProduct(
-        uint256 productId,
-        string memory newName,
-        string memory newCategoryStr,
-        uint256 newPrice,
-        uint256 newStock,
-        string memory newImageCID,
-        bool newStatus
-    ) public onlyOwner(productId) {
-        Product storage product = products[productId];
-
-        if (keccak256(bytes(product.name)) != keccak256(bytes(newName))) {
-            product.name = newName;
-            emit ProductNameUpdated(productId, newName);
-        }
-
-        Category newCategory = parseCategory(newCategoryStr);
-        if (product.category != newCategory) {
-            product.category = newCategory;
-            emit ProductCategoryUpdated(productId, newCategory);
-        }
-
-        if (product.price != newPrice) {
-            product.price = newPrice;
-            emit ProductPriceUpdated(productId, newPrice);
-        }
-
-        if (product.availableUnits != newStock) {
-            product.availableUnits = newStock;
-            emit ProductStockChanged(productId, newStock);
-        }
-
-        if (keccak256(bytes(product.imageCID)) != keccak256(bytes(newImageCID))) {
-            product.imageCID = newImageCID;
-            emit ProductImageCIDUpdated(productId, newImageCID);
-        }
-
-        if (product.status != newStatus) {
-            product.status = newStatus;
-            emit ProductStatusChanged(productId, newStatus);
-        }
-    }
-
-    function updateProductPrice(uint256 productId, uint256 newPrice) public onlyOwner(productId) {
-        products[productId].price = newPrice;
-        emit ProductPriceUpdated(productId, newPrice);
-    }
-
-    function changeProductStock(uint256 productId, uint256 newStock) public onlyOwner(productId) {
-        products[productId].availableUnits = newStock;
-        emit ProductStockChanged(productId, newStock);
-    }
-
-    function changeProductStatus(uint256 productId, bool newStatus) public onlyOwner(productId) {
-        products[productId].status = newStatus;
-        emit ProductStatusChanged(productId, newStatus);
-    }
-
-    function updateProductName(uint256 productId, string memory newName) public onlyOwner(productId) {
-        require(bytes(newName).length > 0, "Name cannot be empty");
-        products[productId].name = newName;
-        emit ProductNameUpdated(productId, newName);
-    }
-
-    function updateProductImageCID(uint256 productId, string memory newCID) public onlyOwner(productId) {
-        require(bytes(newCID).length > 0, "Image CID cannot be empty");
-        products[productId].imageCID = newCID;
-        emit ProductImageCIDUpdated(productId, newCID);
-    }
-
-    function updateProductCategory(uint256 productId, string memory newCategory) public onlyOwner(productId) {
-        Category categoryEnum = parseCategory(newCategory);
-        products[productId].category = categoryEnum;
-        emit ProductCategoryUpdated(productId, categoryEnum);
-    }
-
-    function parseCategory(string memory category) internal pure returns (Category) {
-        bytes32 hashed = keccak256(abi.encodePacked(category));
-
-        if (hashed == keccak256(abi.encodePacked("Fashion"))) return Category.Fashion;
-        if (hashed == keccak256(abi.encodePacked("Electronics"))) return Category.Electronics;
-        if (hashed == keccak256(abi.encodePacked("Furniture"))) return Category.Furniture;
-        if (hashed == keccak256(abi.encodePacked("Books"))) return Category.Books;
-        if (hashed == keccak256(abi.encodePacked("Beauty"))) return Category.Beauty;
-        if (hashed == keccak256(abi.encodePacked("Sports"))) return Category.Sports;
-
-        revert("Invalid category");
-    }
-
-    function isProductIdTaken(uint256 productId) public view returns (bool) {
-        return products[productId].owner != address(0);
     }
 }
