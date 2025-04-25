@@ -7,6 +7,7 @@ import { BrowserProvider, ethers } from "ethers";
 import SellerRegistryABI from "@/contracts/SellerRegistryABI.json";
 import InventoryRegistryABI from "@/contracts/InventoryRegistryABI.json";
 import { CONTRACT_ADDRESSES } from '@/constants/contracts';
+import OrderRegistryABI from "@/contracts/OrderRegistryABI.json";
 
 export default function MarketplacePage() {
   const router = useRouter();
@@ -29,9 +30,11 @@ export default function MarketplacePage() {
   const [validatedCart, setValidatedCart] = useState([]);
   const [totalAmount, setTotalAmount] = useState(0);
   const [billError, setBillError] = useState('');
+  const [isPaying, setIsPaying] = useState(false); // <-- New state
 
   const inventoryContractAddress = CONTRACT_ADDRESSES.InventoryRegistry;
   const sellerContractAddress = CONTRACT_ADDRESSES.SellerRegistry;
+  const orderContractAddress = CONTRACT_ADDRESSES.OrderRegistry;
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -71,7 +74,9 @@ export default function MarketplacePage() {
 
         totalImageCount = fetchedProducts.length;
         setTotalImages(totalImageCount);
-        setProducts(fetchedProducts);
+        
+        const enabledProducts = fetchedProducts.map(parseProductStruct).filter(p => p.status);
+        setProducts(enabledProducts);
       } catch (error) {
         console.error('Error fetching products:', error);
       }
@@ -106,6 +111,18 @@ export default function MarketplacePage() {
     }
   };
 
+  const parseProductStruct = (p) => ({
+    id: p[0],
+    name: p[1],
+    category: p[2],
+    price: p[3],
+    availableUnits: p[4],
+    imageCID: p[5],
+    owner: p[6],
+    timestamp: p[7],
+    status: p[8],
+  });
+
   const parseToCategoryString = (category) => {
     const cat = Number(category);
     switch (cat) {
@@ -128,7 +145,9 @@ export default function MarketplacePage() {
     const provider = new BrowserProvider(window.ethereum);
     const signer = await provider.getSigner();
     const inventoryRegistryContract = new ethers.Contract(inventoryContractAddress, InventoryRegistryABI, signer);
-    const tempProduct = await inventoryRegistryContract.getProduct(product.id);
+    
+    const rawProduct = await inventoryRegistryContract.getProduct(product.id);
+    const tempProduct = parseProductStruct(rawProduct);
 
     if (quantity < 1 || quantity > tempProduct.availableUnits) {
       alert(`Invalid quantity for ${product.name}, refresh page to see updated stock`);
@@ -161,71 +180,77 @@ export default function MarketplacePage() {
       alert("Your cart is empty!");
       return;
     }
-  
+
     const provider = new BrowserProvider(window.ethereum);
     const signer = await provider.getSigner();
-    const inventoryRegistryContract = new ethers.Contract(
-      inventoryContractAddress,
-      InventoryRegistryABI,
-      signer
-    );
-  
+    const inventoryRegistryContract = new ethers.Contract(inventoryContractAddress, InventoryRegistryABI, signer);
+    const orderRegistryContract = new ethers.Contract(orderContractAddress, OrderRegistryABI, provider);
+
     let updatedCart = [];
-    let error = null;
-    let total = 0;
-  
+    const productIds = [];
+    const quantitiesArr = [];
+
     for (const item of cart) {
-      const liveProduct = await inventoryRegistryContract.getProduct(item.product.id);
-  
-      if (item.quantity > liveProduct.availableUnits) {
-        error = `Product "${item.product.name}" has only ${liveProduct.availableUnits} units available.`;
-        break;
-      }
-  
-      const updatedProduct = {
-        ...item.product,
-        price: liveProduct.price,
-        availableUnits: liveProduct.availableUnits,
-      };
-  
+      const rawProduct = await inventoryRegistryContract.getProduct(item.product.id);
+      const liveProduct = parseProductStruct(rawProduct);
+
       updatedCart.push({
-        product: updatedProduct,
+        product: liveProduct,
         quantity: item.quantity,
       });
-  
-      total += Number(liveProduct.price) * item.quantity;
+
+      productIds.push(item.product.id);
+      quantitiesArr.push(item.quantity);
     }
-  
-    if (error) {
-      alert(error);
-      return;
+
+    try {
+      const totalCost = await orderRegistryContract.validate(productIds, quantitiesArr);
+      if (totalCost === -1n) {
+        alert("Some products are out of stock or unavailable. Please update your cart.");
+        return;
+      }
+
+      setValidatedCart(updatedCart);
+      setTotalAmount(Number(totalCost));
+      setBillError('');
+      setShowBill(true);
+    } catch (err) {
+      console.error("Error validating cart:", err);
+      setBillError("Error validating cart.");
+      setShowBill(true);
     }
-  
-    // Save cart and total in localStorage or state
-    localStorage.setItem("checkoutCart", JSON.stringify(updatedCart));
-    localStorage.setItem("checkoutTotal", total.toString());
-  
-    // Navigate to the checkout confirmation page
-    router.push('/buyer/checkout');
   };
-  
+
   const handlePay = async () => {
     try {
+      setIsPaying(true); // Show loading overlay
+
       const provider = new BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
 
-      const tx = await signer.sendTransaction({
-        to: validatedCart[0].product.owner,
-        value: ethers.parseUnits(totalAmount.toString(), "wei")
+      const orderRegistryContract = new ethers.Contract(orderContractAddress, OrderRegistryABI, signer);
+
+      const productIds = validatedCart.map(item => item.product.id);
+      const quantities = validatedCart.map(item => item.quantity);
+
+      const adjustedAmount = BigInt(totalAmount) * BigInt(1e10);
+
+      const tx = await orderRegistryContract.createOrder(productIds, quantities, {
+        value: adjustedAmount,
       });
 
-      alert("Payment Successful! Txn Hash: " + tx.hash);
+      await tx.wait();
+
+      alert("Order created successfully! Txn Hash: " + tx.hash);
+
       setCart([]);
       setValidatedCart([]);
       setShowBill(false);
     } catch (err) {
-      console.error(err);
-      alert("Payment failed. Please try again.");
+      console.error("Error during payment/order creation:", err);
+      alert("Payment or Order creation failed. Please try again.");
+    } finally {
+      setIsPaying(false); // Hide loading overlay
     }
   };
 
@@ -250,15 +275,24 @@ export default function MarketplacePage() {
           </form>
         </div>
 
-        {/* Loading */}
         {loading && (
-          <div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] bg-white/80 flex items-center justify-center backdrop-blur-sm">
             <div className="text-center animate-pulse">
               <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
               <p className="text-lg font-medium text-blue-700">{loadingMessage}</p>
             </div>
           </div>
         )}
+
+        {isPaying && (
+          <div className="fixed inset-0 z-[100] bg-white/80 flex items-center justify-center backdrop-blur-sm">
+            <div className="text-center animate-pulse">
+              <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-lg font-medium text-blue-700">Processing payment...</p>
+            </div>
+          </div>
+        )}
+
 
         {/* Products Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 mt-10">
@@ -295,16 +329,17 @@ export default function MarketplacePage() {
                         <p className="text-sm text-gray-500">Unit Price: {product.price} tinybars</p>
                         <p className="text-sm text-gray-500">Qty: {quantity}</p>
                       </div>
-                      <p className="font-semibold">{product.price * quantity} tinybars</p>
+                      <p className="font-semibold">  {(product.price * BigInt(quantity)).toString()} tinybars</p>
                     </div>
                   ))}
-                  <div className="flex justify-between pt-4 font-bold text-lg">
-                    <span>Total</span>
+                  <div className="flex justify-between pt-4 font-bold text-lg border-t mt-4">
+                    <span>Live Price</span>
                     <span>{totalAmount} tinybars</span>
                   </div>
+
                   <div className="flex justify-end gap-4 pt-4">
                     <button onClick={() => setShowBill(false)} className="px-4 py-2 rounded-md bg-gray-300 hover:bg-gray-400">Cancel</button>
-                    <button onClick={handlePay} disabled={!!billError} className={`px-4 py-2 rounded-md text-white ${billError ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}>Pay</button>
+                    <button onClick={handlePay} disabled={!!billError || isPaying} className={`px-4 py-2 rounded-md text-white ${billError || isPaying ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}>Pay</button>
                   </div>
                 </>
               )}

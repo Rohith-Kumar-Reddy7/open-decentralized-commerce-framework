@@ -19,6 +19,25 @@
         "anonymous": false,
         "inputs": [
             {
+                "indexed": false,
+                "internalType": "string",
+                "name": "label",
+                "type": "string"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            }
+        ],
+        "name": "Debug",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
                 "indexed": true,
                 "internalType": "uint256",
                 "name": "orderId",
@@ -135,6 +154,19 @@
             }
         ],
         "name": "ReturnRequested",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "newReturnWindow",
+                "type": "uint256"
+            }
+        ],
+        "name": "ReturnWindowUpdated",
         "type": "event"
     },
     {
@@ -512,6 +544,19 @@
         "type": "function"
     },
     {
+        "inputs": [],
+        "name": "returnWindowDuration",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
         "inputs": [
             {
                 "internalType": "address",
@@ -544,6 +589,19 @@
             }
         ],
         "name": "updateInventoryRegistryAddress",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "newDuration",
+                "type": "uint256"
+            }
+        ],
+        "name": "updateReturnWindowDuration",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"

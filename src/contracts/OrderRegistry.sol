@@ -87,11 +87,6 @@ contract OrderRegistry {
         inventoryRegistryAddress = newAddress;
     }
 
-    // function updateEscrowAddress(address newAddress) external onlyOwner {
-    //     require(newAddress != address(0), "Invalid address");
-    //     escrowAddress = newAddress;
-    // }
-
     function getOwner() external view returns (address) {
         return owner;
     }
@@ -173,9 +168,18 @@ contract OrderRegistry {
     function cancelOrder(uint256 orderId) external onlyBuyer(orderId) {
         Order storage order = orders[orderId];
         require(order.state == OrderState.CREATED, "Order cannot be cancelled");
+
         order.state = OrderState.CANCELLED;
-        IEscrow(escrowAddress).refund(orderId);
-        emit OrderCancelled(orderId);
+
+        try IEscrow(escrowAddress).refund(orderId) {
+            for (uint i = 0; i < order.items.length; i++) {
+                (,, , , uint256 availableUnits,, , , ) = IInventoryRegistry(inventoryRegistryAddress).getProduct(order.items[i].productId);
+                IInventoryRegistry(inventoryRegistryAddress).changeProductStock(order.items[i].productId, availableUnits + order.items[i].quantity);
+            }
+            emit OrderCancelled(orderId);
+        } catch {
+            revert("Refund or stock update failed");
+        }
     }
 
     function dispatchOrder(uint256 orderId) external onlySeller(orderId) {
@@ -203,9 +207,18 @@ contract OrderRegistry {
     function approveReturn(uint256 orderId) external onlySeller(orderId) {
         Order storage order = orders[orderId];
         require(order.state == OrderState.RETURN_REQUESTED, "Return not requested");
+
         order.state = OrderState.RETURN_APPROVED;
-        IEscrow(escrowAddress).refund(orderId);
-        emit ReturnApproved(orderId);
+
+        try IEscrow(escrowAddress).refund(orderId) {
+            for (uint i = 0; i < order.items.length; i++) {
+                (,, , , uint256 availableUnits,, , , ) = IInventoryRegistry(inventoryRegistryAddress).getProduct(order.items[i].productId);
+                IInventoryRegistry(inventoryRegistryAddress).changeProductStock(order.items[i].productId, availableUnits + order.items[i].quantity);
+            }
+            emit ReturnApproved(orderId);
+        } catch {
+            revert("Refund or stock update failed");
+        }
     }
 
     function rejectReturn(uint256 orderId) external onlySeller(orderId) {
@@ -244,7 +257,7 @@ contract OrderRegistry {
             order.totalAmount,
             order.createdAt,
             order.receivedAt,
-            (uint8)(order.state) 
+            uint8(order.state)
         );
     }
 
