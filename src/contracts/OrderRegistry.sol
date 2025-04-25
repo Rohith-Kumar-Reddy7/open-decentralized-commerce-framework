@@ -2,18 +2,28 @@
 pragma solidity ^0.8.0;
 
 interface IInventoryRegistry {
-    function getProduct(uint256 productId) external view returns (
-        uint256 id,
-        string memory name,
-        uint8 category,
-        uint256 price,
-        uint256 availableUnits,
-        string memory imageCID,
-        address owner,
-        uint256 releaseDate,
-        bool status
-    );
+    enum Category {
+        Fashion,
+        Electronics,
+        Furniture,
+        Books,
+        Beauty,
+        Sports
+    }
 
+    struct Product {
+        uint256 id;
+        string name;
+        Category category;
+        uint256 price;
+        uint256 availableUnits;
+        string imageCID;
+        address owner;
+        uint256 releaseDate;
+        bool status;
+    }
+
+    function getProduct(uint256 productId) external view returns (Product memory);
     function changeProductStock(uint256 productId, uint256 newStock) external;
 }
 
@@ -48,6 +58,8 @@ contract OrderRegistry {
     address public escrowAddress;
     uint256 private nextOrderId = 1;
 
+    uint256 public returnWindowDuration = 7 days; 
+
     mapping(uint256 => Order) public orders;
     mapping(address => uint256[]) public sellerOrders;
     mapping(address => uint256[]) public buyerOrders;
@@ -60,6 +72,9 @@ contract OrderRegistry {
     event ReturnApproved(uint256 indexed orderId);
     event ReturnRejected(uint256 indexed orderId);
     event FundsClaimed(uint256 indexed orderId);
+    event ReturnWindowUpdated(uint256 newReturnWindow);
+
+    event Debug(string label,uint256 amount);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Not the owner");
@@ -87,6 +102,12 @@ contract OrderRegistry {
         inventoryRegistryAddress = newAddress;
     }
 
+    function updateReturnWindowDuration(uint256 newDuration) external onlyOwner {
+        require(newDuration > 0, "Return window must be positive");
+        returnWindowDuration = newDuration;
+        emit ReturnWindowUpdated(newDuration);
+    }
+
     function getOwner() external view returns (address) {
         return owner;
     }
@@ -97,13 +118,16 @@ contract OrderRegistry {
         uint256 totalCost = 0;
 
         for (uint i = 0; i < productIds.length; i++) {
-            (,, , uint256 price, uint256 availableUnits,, , , bool status) =
-                IInventoryRegistry(inventoryRegistryAddress).getProduct(productIds[i]);
+            // Fetch the product from InventoryRegistry
+            IInventoryRegistry.Product memory product = IInventoryRegistry(inventoryRegistryAddress).getProduct(productIds[i]);
 
-            if (!status || availableUnits < quantities[i]) {
+            // Check if the product is active (status is true) and if there is enough stock
+            if (!product.status || product.availableUnits < quantities[i]) {
                 return -1;
             }
-            totalCost += price * quantities[i];
+
+            // Calculate the total cost
+            totalCost += product.price * quantities[i];
         }
 
         return int256(totalCost);
@@ -123,20 +147,21 @@ contract OrderRegistry {
         OrderItem[] memory orderItems = new OrderItem[](productIds.length);
 
         for (uint i = 0; i < productIds.length; i++) {
-            (,, , uint256 price, uint256 availableUnits,, address productOwner,, bool status) =
-                IInventoryRegistry(inventoryRegistryAddress).getProduct(productIds[i]);
+            IInventoryRegistry.Product memory product = IInventoryRegistry(inventoryRegistryAddress).getProduct(productIds[i]);
 
-            if (!status || availableUnits < quantities[i]) {
+            if (!product.status || product.availableUnits < quantities[i]) {
                 revert("Product unavailable or insufficient stock");
             }
 
-            if (i == 0) seller = productOwner;
+            if (i == 0) seller = product.owner;
 
-            orderItems[i] = OrderItem(productIds[i], quantities[i], price);
-            totalAmount += price * quantities[i];
+            orderItems[i] = OrderItem(productIds[i], quantities[i], product.price);
+            totalAmount += product.price * quantities[i];
         }
-
-        require(msg.value == totalAmount, "Incorrect payment amount");
+        emit Debug("total Amount", totalAmount);
+        emit Debug("msg value", msg.value);
+        
+        require(msg.value >= totalAmount, "Incorrect payment amount sent to OrderRegistry");
 
         Order storage newOrder = orders[orderId];
         newOrder.id = orderId;
@@ -155,8 +180,8 @@ contract OrderRegistry {
             sellerOrders[seller].push(orderId);
 
             for (uint i = 0; i < productIds.length; i++) {
-                (, , , , uint256 availableUnits,, , , ) = IInventoryRegistry(inventoryRegistryAddress).getProduct(productIds[i]);
-                IInventoryRegistry(inventoryRegistryAddress).changeProductStock(productIds[i], availableUnits - quantities[i]);
+                IInventoryRegistry.Product memory product = IInventoryRegistry(inventoryRegistryAddress).getProduct(productIds[i]);
+                IInventoryRegistry(inventoryRegistryAddress).changeProductStock(productIds[i], product.availableUnits - quantities[i]);
             }
             emit OrderCreated(orderId, buyer, seller, totalAmount);
         } catch {
@@ -173,8 +198,8 @@ contract OrderRegistry {
 
         try IEscrow(escrowAddress).refund(orderId) {
             for (uint i = 0; i < order.items.length; i++) {
-                (,, , , uint256 availableUnits,, , , ) = IInventoryRegistry(inventoryRegistryAddress).getProduct(order.items[i].productId);
-                IInventoryRegistry(inventoryRegistryAddress).changeProductStock(order.items[i].productId, availableUnits + order.items[i].quantity);
+                IInventoryRegistry.Product memory product = IInventoryRegistry(inventoryRegistryAddress).getProduct(order.items[i].productId);
+                IInventoryRegistry(inventoryRegistryAddress).changeProductStock(order.items[i].productId, product.availableUnits + order.items[i].quantity);
             }
             emit OrderCancelled(orderId);
         } catch {
@@ -199,10 +224,18 @@ contract OrderRegistry {
 
     function requestReturn(uint256 orderId) external onlyBuyer(orderId) {
         Order storage order = orders[orderId];
-        require(order.state == OrderState.DELIVERED, "Order must be delivered to request return");
+        require(
+            order.state == OrderState.DELIVERED ,
+            "Order not eligible for return request"
+        );
+        require(
+            block.timestamp <= order.receivedAt + returnWindowDuration,
+            "Return window has expired"
+        );
         order.state = OrderState.RETURN_REQUESTED;
         emit ReturnRequested(orderId);
     }
+
 
     function approveReturn(uint256 orderId) external onlySeller(orderId) {
         Order storage order = orders[orderId];
@@ -212,8 +245,8 @@ contract OrderRegistry {
 
         try IEscrow(escrowAddress).refund(orderId) {
             for (uint i = 0; i < order.items.length; i++) {
-                (,, , , uint256 availableUnits,, , , ) = IInventoryRegistry(inventoryRegistryAddress).getProduct(order.items[i].productId);
-                IInventoryRegistry(inventoryRegistryAddress).changeProductStock(order.items[i].productId, availableUnits + order.items[i].quantity);
+                IInventoryRegistry.Product memory product = IInventoryRegistry(inventoryRegistryAddress).getProduct(order.items[i].productId);
+                IInventoryRegistry(inventoryRegistryAddress).changeProductStock(order.items[i].productId, product.availableUnits + order.items[i].quantity);
             }
             emit ReturnApproved(orderId);
         } catch {
@@ -232,9 +265,9 @@ contract OrderRegistry {
         Order storage order = orders[orderId];
         require(
             order.state == OrderState.DELIVERED || order.state == OrderState.RETURN_REJECTED,
-            "Funds can only be claimed if order is delivered or return rejected"
+            "Funds can  be claimed only once after the order is delivered or return rejected"
         );
-        require(block.timestamp >= order.receivedAt + 7 days, "Claim window not reached");
+        require(block.timestamp >= order.receivedAt + returnWindowDuration, "Claim window not reached");
         order.state = OrderState.COMPLETED;
         IEscrow(escrowAddress).claim(orderId);
         emit FundsClaimed(orderId);

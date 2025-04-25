@@ -12,7 +12,6 @@ export default function SellerLayout({ children }) {
         </div>
         <nav className="space-x-6">
           <Link href="/buyer/marketplace" className="text-gray-700 hover:text-blue-600 font-medium">marketplace</Link>
-          <Link href="/buyer/cart" className="text-gray-700 hover:text-blue-600 font-medium">Cart</Link>
           <Link href="/buyer/orders" className="text-gray-700 hover:text-blue-600 font-medium">Orders</Link>
         </nav>
       </header>
